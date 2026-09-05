@@ -46,7 +46,7 @@ cargo fmt --check
 - Tests use [vitest](https://vitest.dev/) (`vitest.config.mts`); projen's jest integration is disabled (`jest: false`).
 - Rust code: keep the logical modules (`environment`, `config`, `backoff`, `replay`); pure logic is unit-tested in-crate; keep `main.rs` thin.
 - Keep behavior aligned with the reference implementations:
-    - Lambda semantics: replay with exponential backoff, `sqs-dlq-replay-num` attempt tracking, and batch item failures.
+  - Lambda semantics: replay with exponential backoff, `sqs-dlq-replay-num` attempt tracking, and batch item failures.
   - Construct semantics: the queue-with-replay and queue-replayer pattern (redrive chain + replayer).
 - The shared Lambda is memoized per CDK `Stage` in `src/sqs-replayer-singleton.ts` (module-level `WeakMap`); function-level props come from the first instance in an app.
 
