@@ -68,6 +68,14 @@
         }
       ]
     },
+    "bundle:lambda": {
+      "name": "bundle:lambda",
+      "steps": [
+        {
+          "exec": "bash scripts/bundle-lambda.sh"
+        }
+      ]
+    },
     "clobber": {
       "name": "clobber",
       "description": "hard resets to HEAD of origin and cleans the local repo",
@@ -147,19 +155,6 @@
             "--project",
             "projenrc/tsconfig.json",
             ".projenrc.ts"
-          ]
-        }
-      ]
-    },
-    "docgen": {
-      "name": "docgen",
-      "description": "Generate API.md from .jsii manifest",
-      "steps": [
-        {
-          "execArgs": [
-            "jsii-docgen",
-            "-o",
-            "API.md"
           ]
         }
       ]
@@ -259,12 +254,7 @@
     },
     "post-compile": {
       "name": "post-compile",
-      "description": "Runs after successful compilation",
-      "steps": [
-        {
-          "spawn": "docgen"
-        }
-      ]
+      "description": "Runs after successful compilation"
     },
     "post-upgrade": {
       "name": "post-upgrade",
@@ -307,27 +297,13 @@
       "description": "Run tests",
       "steps": [
         {
-          "execArgs": [
-            "jest",
-            "--passWithNoTests",
-            "--updateSnapshot"
-          ],
-          "receiveArgs": true
+          "spawn": "bundle:lambda"
+        },
+        {
+          "exec": "vitest run"
         },
         {
           "spawn": "eslint"
-        }
-      ]
-    },
-    "test:watch": {
-      "name": "test:watch",
-      "description": "Run jest in watch mode",
-      "steps": [
-        {
-          "execArgs": [
-            "jest",
-            "--watch"
-          ]
         }
       ]
     },
@@ -364,7 +340,7 @@
             "--peer",
             "--no-deprecated",
             "--dep=dev,prod,peer,optional",
-            "--filter=@types/jest,eslint-import-resolver-typescript,eslint-plugin-import,jest,jsii-diff,jsii-pacmak,projen,ts-jest,ts-node"
+            "--filter=eslint-import-resolver-typescript,eslint-plugin-import,jsii-diff,jsii-pacmak,projen,ts-node,vitest"
           ]
         },
         {
@@ -375,7 +351,6 @@
             "npm",
             "update",
             "@stylistic/eslint-plugin",
-            "@types/jest",
             "@types/node",
             "@typescript-eslint/eslint-plugin",
             "@typescript-eslint/parser",
@@ -383,17 +358,14 @@
             "eslint-import-resolver-typescript",
             "eslint-plugin-import",
             "eslint",
-            "jest",
-            "jest-junit",
             "jsii-diff",
-            "jsii-docgen",
             "jsii-pacmak",
             "jsii-rosetta",
             "jsii",
             "projen",
-            "ts-jest",
             "ts-node",
             "typescript",
+            "vitest",
             "aws-cdk-lib",
             "constructs"
           ]

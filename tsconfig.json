@@ -26,7 +26,6 @@
     "stripInternal": false,
     "target": "ES2022",
     "types": [
-      "jest",
       "node"
     ],
     "skipLibCheck": true

@@ -12,6 +12,7 @@
   languages.javascript.npm.enable = true;
   languages.javascript.npm.install.enable = true;
   languages.rust.enable = true;
+  languages.rust.toolchainFile = ./lambda/rust-toolchain.toml;
 
   # https://devenv.sh/scripts/
   scripts.versioncheck.exec = ''

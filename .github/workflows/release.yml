@@ -46,6 +46,15 @@ jobs:
       - name: Install dependencies
         id: install_dependencies
         run: npm ci
+      - id: auto_2ea7773d
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+      - id: auto_c9a847e1
+        uses: goto-bus-stop/setup-zig@v2
+      - name: Install cargo-zigbuild
+        id: install_cargo-zigbuild
+        run: cargo install cargo-zigbuild
       - name: release
         id: release
         run: npx projen release

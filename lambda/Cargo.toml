@@ -8,9 +8,14 @@ license = "Apache-2.0"
 [dependencies]
 aws-config = { version = "1", default-features = false, features = ["behavior-version-latest"] }
 aws-sdk-sqs = "1"
+aws-smithy-types = "1"
+aws_lambda_events = "1"
 lambda_runtime = "1"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+rand = "0.9"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["fmt"] }
+url = "2"
+
+[dev-dependencies]
+serde_json = "1"

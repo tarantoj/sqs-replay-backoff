@@ -8,11 +8,11 @@
     "build": "projen build",
     "bump": "projen bump",
     "bump:releasable-commits": "projen bump:releasable-commits",
+    "bundle:lambda": "projen bundle:lambda",
     "clobber": "projen clobber",
     "compat": "projen compat",
     "compile": "projen compile",
     "default": "projen default",
-    "docgen": "projen docgen",
     "eject": "projen eject",
     "eslint": "projen eslint",
     "package": "projen package",
@@ -23,7 +23,6 @@
     "pre-compile": "projen pre-compile",
     "release": "projen release",
     "test": "projen test",
-    "test:watch": "projen test:watch",
     "unbump": "projen unbump",
     "upgrade": "projen upgrade",
     "watch": "projen watch",
@@ -36,7 +35,6 @@
   },
   "devDependencies": {
     "@stylistic/eslint-plugin": "^2",
-    "@types/jest": "^30.0.0",
     "@types/node": "ts5.9",
     "@typescript-eslint/eslint-plugin": "^8",
     "@typescript-eslint/parser": "^8",
@@ -46,17 +44,14 @@
     "eslint": "^9",
     "eslint-import-resolver-typescript": "^4.4.5",
     "eslint-plugin-import": "^2.32.0",
-    "jest": "^30.5.1",
-    "jest-junit": "^17",
     "jsii": "6.0.12",
     "jsii-diff": "^1.140.0",
-    "jsii-docgen": "^10.5.0",
     "jsii-pacmak": "^1.140.0",
     "jsii-rosetta": "6.0.12",
     "projen": "^0.103.19",
-    "ts-jest": "^29.4.12",
     "ts-node": "^10.9.2",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "vitest": "^5.0.0"
   },
   "peerDependencies": {
     "aws-cdk-lib": "^2.268.0",
@@ -75,51 +70,6 @@
   "license": "Apache-2.0",
   "stability": "stable",
   "version": "0.0.0",
-  "jest": {
-    "coverageProvider": "v8",
-    "testMatch": [
-      "<rootDir>/@(src|test)/**/*(*.)@(spec|test).ts?(x)",
-      "<rootDir>/@(src|test)/**/__tests__/**/*.ts?(x)",
-      "<rootDir>/@(projenrc)/**/*(*.)@(spec|test).ts?(x)",
-      "<rootDir>/@(projenrc)/**/__tests__/**/*.ts?(x)"
-    ],
-    "clearMocks": true,
-    "collectCoverage": true,
-    "coverageReporters": [
-      "json",
-      "lcov",
-      "clover",
-      "cobertura",
-      "text"
-    ],
-    "coverageDirectory": "coverage",
-    "coveragePathIgnorePatterns": [
-      "/node_modules/"
-    ],
-    "testPathIgnorePatterns": [
-      "/node_modules/"
-    ],
-    "watchPathIgnorePatterns": [
-      "/node_modules/"
-    ],
-    "reporters": [
-      "default",
-      [
-        "jest-junit",
-        {
-          "outputDirectory": "test-reports"
-        }
-      ]
-    ],
-    "transform": {
-      "^.+\\.[t]sx?$": [
-        "ts-jest",
-        {
-          "tsconfig": "test/tsconfig.json"
-        }
-      ]
-    }
-  },
   "types": "lib/index.d.ts",
   "jsii": {
     "outdir": "dist",

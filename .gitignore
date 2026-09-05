@@ -36,9 +36,7 @@ devenv.local.yaml
 .direnv
 .pre-commit-config.yaml
 /lambda/target/
-/test-reports/
-junit.xml
-/coverage/
+/assets/
 !/.github/workflows/build.yml
 /dist/changelog.md
 /dist/version.txt
@@ -55,5 +53,4 @@ junit.xml
 !/.eslintrc.json
 !/projenrc/tsconfig.json
 .jsii
-!/API.md
 !/.projenrc.ts

@@ -6,10 +6,6 @@
       "type": "build"
     },
     {
-      "name": "@types/jest",
-      "type": "build"
-    },
-    {
       "name": "@types/node",
       "version": "ts5.9",
       "type": "build"
@@ -43,21 +39,7 @@
       "type": "build"
     },
     {
-      "name": "jest",
-      "type": "build"
-    },
-    {
-      "name": "jest-junit",
-      "version": "^17",
-      "type": "build"
-    },
-    {
       "name": "jsii-diff",
-      "type": "build"
-    },
-    {
-      "name": "jsii-docgen",
-      "version": "^10.5.0",
       "type": "build"
     },
     {
@@ -79,16 +61,16 @@
       "type": "build"
     },
     {
-      "name": "ts-jest",
-      "type": "build"
-    },
-    {
       "name": "ts-node",
       "type": "build"
     },
     {
       "name": "typescript",
       "version": "~5.9.3",
+      "type": "build"
+    },
+    {
+      "name": "vitest",
       "type": "build"
     },
     {
