@@ -1,0 +1,32 @@
+import { awscdk, javascript } from 'projen';
+const project = new awscdk.AwsCdkConstructLibrary({
+  author: 'James Taranto',
+  authorAddress: 'taranto.james@gmail.com',
+  cdkVersion: '2.268.0',
+  constructsVersion: '10.8.1',
+  jsiiVersion: '6.0.12',
+  typescriptVersion: '~5.9.3',
+  defaultReleaseBranch: 'main',
+  name: '@tarantoj/sqs-replay-backoff',
+  projenrcTs: true,
+  releaseToNpm: true,
+  repositoryUrl: 'https://github.com/tarantoj/sqs-replay-backoff.git',
+  packageManager: javascript.NodePackageManager.NPM,
+  sampleCode: false,
+  lambdaAutoDiscover: false,
+  edgeLambdaAutoDiscover: false,
+  singletonLambdaAutoDiscover: false,
+  lambdaExtensionAutoDiscover: false,
+  integrationTestAutoDiscover: false,
+  gitignore: [
+    '.devenv*',
+    'devenv.local.nix',
+    'devenv.local.yaml',
+    '.direnv',
+    '.pre-commit-config.yaml',
+    '/lambda/target/',
+  ],
+  deps: [],
+  devDeps: [],
+});
+project.synth();
