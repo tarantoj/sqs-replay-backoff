@@ -58,6 +58,11 @@ export interface SqsQueueWithReplayProps {
    * @default - prebuilt Rust binary bundled with this package
    */
   readonly code?: aws_lambda.Code;
+  /**
+   * SSM parameter path under which per-queue replay configs are stored.
+   * @default "/sqs-replay/queues/"
+   */
+  readonly configPath?: string;
 }
 
 /**
@@ -118,6 +123,7 @@ export class SqsQueueWithReplay extends Construct {
       functionName: props.functionName,
       environment: props.environment,
       code: props.code,
+      configPath: props.configPath,
     });
     this.replayer = replayer.replayer;
   }

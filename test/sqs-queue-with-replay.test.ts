@@ -1,21 +1,26 @@
 import { join } from 'path';
-import { aws_lambda, Duration, Stack } from 'aws-cdk-lib';
+import { App, aws_lambda, Duration, Stack } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { describe, expect, test } from 'vitest';
 import { SqsQueueWithReplay } from '../src/sqs-queue-with-replay';
 
-describe('SqsQueueWithReplay', () => {
-  const fixtureCode = () =>
-    aws_lambda.Code.fromAsset(join(__dirname, 'fixtures', 'bootstrap-dir'));
+const env = { account: '123456789012', region: 'us-east-1' };
+const fixtureCode = () =>
+  aws_lambda.Code.fromAsset(join(__dirname, 'fixtures', 'bootstrap-dir'));
 
+describe('SqsQueueWithReplay', () => {
   test('creates the queue, replay queue, and DLQ redrive chain', () => {
-    const stack = new Stack();
+    const app = new App();
+    const stack = new Stack(app, 'TestStack', { env });
 
     new SqsQueueWithReplay(stack, 'QueueWithReplay', { code: fixtureCode() });
 
     const template = Template.fromStack(stack);
 
     template.resourceCountIs('AWS::SQS::Queue', 3);
+    template.resourceCountIs('AWS::Lambda::Function', 1);
+    template.resourceCountIs('AWS::Lambda::EventSourceMapping', 1);
+    template.resourceCountIs('AWS::SSM::Parameter', 1);
 
     template.hasResourceProperties('AWS::SQS::Queue', {
       RedrivePolicy: {
@@ -25,13 +30,11 @@ describe('SqsQueueWithReplay', () => {
         maxReceiveCount: 5,
       },
     });
-
-    const queues = template.findResources('AWS::SQS::Queue');
-    expect(Object.keys(queues)).toHaveLength(3);
   });
 
   test('honours fifo, visibility timeout, and max receive count', () => {
-    const stack = new Stack();
+    const app = new App();
+    const stack = new Stack(app, 'TestStack', { env });
 
     new SqsQueueWithReplay(stack, 'QueueWithReplay', {
       fifo: true,
@@ -58,7 +61,8 @@ describe('SqsQueueWithReplay', () => {
   });
 
   test('exposes the queue, replay queue, DLQ, and replayer', () => {
-    const stack = new Stack();
+    const app = new App();
+    const stack = new Stack(app, 'TestStack', { env });
 
     const queueWithReplay = new SqsQueueWithReplay(stack, 'QueueWithReplay', {
       code: fixtureCode(),

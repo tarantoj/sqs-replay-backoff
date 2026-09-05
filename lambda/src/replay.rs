@@ -7,7 +7,7 @@ use aws_sdk_sqs::Client;
 use aws_smithy_types::Blob;
 
 use crate::backoff::backoff;
-use crate::environment::Environment;
+use crate::config::ResolvedQueueConfig;
 
 /// Message attribute tracking how many times a message has been replayed.
 pub const REPLAY_NUM_PROPERTY_NAME: &str = "sqs-dlq-replay-num";
@@ -26,22 +26,22 @@ pub struct ReplayRequest {
 /// Builds a [`ReplayRequest`] for an SQS record, or `None` when the replay
 /// attempt limit has been exceeded (the message should be reported as failed).
 pub fn build_replay_request(
-    env: &Environment,
+    config: &ResolvedQueueConfig,
     record: &SqsMessage,
 ) -> Result<Option<ReplayRequest>, ReplayError> {
     let mut replay_num = replay_num(record)?;
     replay_num += 1;
 
-    if replay_num > env.max_attempts {
+    if replay_num > config.max_attempts {
         return Ok(None);
     }
 
     Ok(Some(ReplayRequest {
-        queue_url: env.queue_url.clone(),
+        queue_url: config.queue_url.clone(),
         message_body: record.body.clone().ok_or(ReplayError::MissingBody)?,
         delay_seconds: backoff(
-            env.backoff_rate_seconds,
-            env.maximum_delay_seconds,
+            config.backoff_rate_seconds,
+            config.maximum_delay_seconds,
             replay_num,
         ),
         message_attributes: map_message_attributes(&record.message_attributes, replay_num),
@@ -166,8 +166,8 @@ impl std::error::Error for ReplayError {}
 mod tests {
     use super::*;
 
-    fn env() -> Environment {
-        Environment {
+    fn config() -> ResolvedQueueConfig {
+        ResolvedQueueConfig {
             queue_url: "https://sqs.ap-southeast-2.amazonaws.com/12345/MyQueue".to_string(),
             max_attempts: 5,
             backoff_rate_seconds: 30,
@@ -206,7 +206,7 @@ mod tests {
 
     #[test]
     fn adds_a_delay_and_replay_num_to_a_message() {
-        let request = build_replay_request(&env(), &record())
+        let request = build_replay_request(&config(), &record())
             .unwrap()
             .expect("first attempt is within max attempts");
         assert_eq!(request.delay_seconds, 60);
@@ -222,7 +222,7 @@ mod tests {
             REPLAY_NUM_PROPERTY_NAME.to_string(),
             attribute(Some("1"), "String"),
         );
-        let request = build_replay_request(&env(), &record)
+        let request = build_replay_request(&config(), &record)
             .unwrap()
             .expect("second attempt is within max attempts");
         let replay = &request.message_attributes[REPLAY_NUM_PROPERTY_NAME];
@@ -236,10 +236,25 @@ mod tests {
         record
             .message_attributes
             .insert("custom".to_string(), attribute(Some("value"), "String"));
-        let request = build_replay_request(&env(), &record).unwrap().unwrap();
+        let request = build_replay_request(&config(), &record).unwrap().unwrap();
         let custom = &request.message_attributes["custom"];
         assert_eq!(custom.string_value.as_deref(), Some("value"));
         assert_eq!(custom.data_type(), "String");
+    }
+
+    #[test]
+    fn uses_the_destination_and_tuning_from_the_resolved_config() {
+        let mut custom = config();
+        custom.queue_url =
+            "https://sqs.us-east-1.amazonaws.com/123456789012/OtherQueue".to_string();
+        custom.max_attempts = 2;
+        custom.backoff_rate_seconds = 60;
+        let request = build_replay_request(&custom, &record()).unwrap().unwrap();
+        assert_eq!(
+            request.queue_url,
+            "https://sqs.us-east-1.amazonaws.com/123456789012/OtherQueue"
+        );
+        assert_eq!(request.delay_seconds, 120);
     }
 
     #[test]
@@ -249,7 +264,7 @@ mod tests {
             REPLAY_NUM_PROPERTY_NAME.to_string(),
             attribute(Some("5"), "Number"),
         );
-        assert!(build_replay_request(&env(), &record).unwrap().is_none());
+        assert!(build_replay_request(&config(), &record).unwrap().is_none());
     }
 
     #[test]
@@ -259,7 +274,7 @@ mod tests {
             REPLAY_NUM_PROPERTY_NAME.to_string(),
             attribute(None, "Number"),
         );
-        let request = build_replay_request(&env(), &record)
+        let request = build_replay_request(&config(), &record)
             .unwrap()
             .expect("missing string value defaults to first attempt");
         let replay = &request.message_attributes[REPLAY_NUM_PROPERTY_NAME];
@@ -275,14 +290,14 @@ mod tests {
         record
             .attributes
             .insert("MessageGroupId".to_string(), "group".to_string());
-        let request = build_replay_request(&env(), &record).unwrap().unwrap();
+        let request = build_replay_request(&config(), &record).unwrap().unwrap();
         assert_eq!(request.message_deduplication_id.as_deref(), Some("dedupe"));
         assert_eq!(request.message_group_id.as_deref(), Some("group"));
     }
 
     #[test]
     fn omits_fifo_attributes_when_absent() {
-        let request = build_replay_request(&env(), &record()).unwrap().unwrap();
+        let request = build_replay_request(&config(), &record()).unwrap().unwrap();
         assert_eq!(request.message_deduplication_id, None);
         assert_eq!(request.message_group_id, None);
     }

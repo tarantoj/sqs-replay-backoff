@@ -3,6 +3,8 @@ use std::env;
 
 use url::Url;
 
+/// Default SSM parameter path under which per-queue replay configs are stored.
+pub const DEFAULT_CONFIG_PATH: &str = "/sqs-replay/queues/";
 /// Maximum allowed delay in seconds, matching the SQS message timer limit of
 /// 15 minutes.
 pub const MAXIMUM_DELAY_LIMIT_SECONDS: u32 = 15 * 60;
@@ -10,8 +12,11 @@ pub const MAXIMUM_DELAY_LIMIT_SECONDS: u32 = 15 * 60;
 /// Environment configuration for the SQS replayer lambda.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Environment {
-    /// The SQS queue to send messages back to.
-    pub queue_url: String,
+    /// Queue to send messages back to. When set, the lambda runs in single-queue
+    /// mode and ignores the SSM config store.
+    pub queue_url: Option<String>,
+    /// SSM parameter path under which per-queue replay configs are stored.
+    pub config_path: String,
     /// Maximum replay attempts.
     pub max_attempts: u32,
     /// Multiplier for the backoff calculation, in seconds.
@@ -30,22 +35,38 @@ impl Environment {
     pub fn parse(values: &HashMap<String, String>) -> Result<Self, ConfigError> {
         let queue_url = values
             .get("QUEUE_URL")
-            .ok_or(ConfigError::Missing("QUEUE_URL"))?;
-        let parsed = Url::parse(queue_url)
-            .map_err(|_| ConfigError::Invalid("QUEUE_URL must be a valid URL".to_string()))?;
-        if parsed.scheme() != "http" && parsed.scheme() != "https" {
+            .map(|value| validate_url(value))
+            .transpose()?;
+
+        let config_path = values
+            .get("SSM_PARAMETER_PATH")
+            .cloned()
+            .unwrap_or_else(|| DEFAULT_CONFIG_PATH.to_string());
+        if !config_path.starts_with('/') {
             return Err(ConfigError::Invalid(
-                "QUEUE_URL must use the http or https scheme".to_string(),
+                "SSM_PARAMETER_PATH must start with '/'".to_string(),
             ));
         }
 
         Ok(Environment {
-            queue_url: queue_url.clone(),
+            queue_url,
+            config_path,
             max_attempts: positive_int(values, "MAX_ATTEMPTS", 5)?,
             backoff_rate_seconds: positive_int(values, "BACKOFF_RATE", 30)?,
             maximum_delay_seconds: maximum_delay(values)?,
         })
     }
+}
+
+fn validate_url(value: &str) -> Result<String, ConfigError> {
+    let parsed = Url::parse(value)
+        .map_err(|_| ConfigError::Invalid("QUEUE_URL must be a valid URL".to_string()))?;
+    if parsed.scheme() != "http" && parsed.scheme() != "https" {
+        return Err(ConfigError::Invalid(
+            "QUEUE_URL must use the http or https scheme".to_string(),
+        ));
+    }
+    Ok(value.to_string())
 }
 
 /// Parses a positive integer environment variable, falling back to `default`
@@ -85,14 +106,12 @@ fn maximum_delay(values: &HashMap<String, String>) -> Result<u32, ConfigError> {
 /// Configuration parsing and validation error.
 #[derive(Debug)]
 pub enum ConfigError {
-    Missing(&'static str),
     Invalid(String),
 }
 
 impl std::fmt::Display for ConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConfigError::Missing(name) => write!(f, "missing required environment variable {name}"),
             ConfigError::Invalid(message) => write!(f, "invalid configuration: {message}"),
         }
     }
@@ -117,7 +136,10 @@ mod tests {
         assert_eq!(
             result,
             Environment {
-                queue_url: "https://sqs.ap-southeast-2.amazonaws.com/12345/MyQueue".to_string(),
+                queue_url: Some(
+                    "https://sqs.ap-southeast-2.amazonaws.com/12345/MyQueue".to_string()
+                ),
+                config_path: "/sqs-replay/queues/".to_string(),
                 max_attempts: 5,
                 backoff_rate_seconds: 30,
                 maximum_delay_seconds: 900,
@@ -126,23 +148,24 @@ mod tests {
     }
 
     #[test]
+    fn defaults_to_the_config_store_when_queue_url_is_unset() {
+        let result = Environment::parse(&HashMap::new()).unwrap();
+        assert_eq!(result.queue_url, None);
+        assert_eq!(result.config_path, "/sqs-replay/queues/");
+    }
+
+    #[test]
     fn accepts_explicit_values() {
         let mut values = vars();
         values.insert("MAX_ATTEMPTS".to_string(), "3".to_string());
         values.insert("BACKOFF_RATE".to_string(), "60".to_string());
         values.insert("MAXIMUM_DELAY".to_string(), "120".to_string());
+        values.insert("SSM_PARAMETER_PATH".to_string(), "/custom/".to_string());
         let result = Environment::parse(&values).unwrap();
         assert_eq!(result.max_attempts, 3);
         assert_eq!(result.backoff_rate_seconds, 60);
         assert_eq!(result.maximum_delay_seconds, 120);
-    }
-
-    #[test]
-    fn errors_when_queue_url_missing() {
-        assert!(matches!(
-            Environment::parse(&HashMap::new()),
-            Err(ConfigError::Missing("QUEUE_URL"))
-        ));
+        assert_eq!(result.config_path, "/custom/");
     }
 
     #[test]
@@ -154,6 +177,12 @@ mod tests {
     #[test]
     fn errors_when_queue_url_has_non_http_scheme() {
         let values = HashMap::from([("QUEUE_URL".to_string(), "ftp://example.com".to_string())]);
+        assert!(Environment::parse(&values).is_err());
+    }
+
+    #[test]
+    fn errors_when_config_path_is_not_absolute() {
+        let values = HashMap::from([("SSM_PARAMETER_PATH".to_string(), "rel".to_string())]);
         assert!(Environment::parse(&values).is_err());
     }
 

@@ -1,20 +1,74 @@
 import { join } from 'path';
-import {
-  aws_lambda,
-  aws_sqs,
-  Duration,
-  Stack,
-} from 'aws-cdk-lib';
+import { App, aws_lambda, aws_sqs, Duration, Stack } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import { describe, expect, test } from 'vitest';
 import { SqsReplayer } from '../src/sqs-replayer';
 
-describe('SqsReplayer', () => {
-  const fixtureCode = () =>
-    aws_lambda.Code.fromAsset(join(__dirname, 'fixtures', 'bootstrap-dir'));
+const env = { account: '123456789012', region: 'us-east-1' };
+const fixtureCode = () =>
+  aws_lambda.Code.fromAsset(join(__dirname, 'fixtures', 'bootstrap-dir'));
 
-  test('creates a Rust lambda triggered by the replay queue', () => {
-    const stack = new Stack();
+describe('SqsReplayer', () => {
+  test('shares a single lambda across replayers', () => {
+    const app = new App();
+    const stack = new Stack(app, 'TestStack', { env });
+    const source1 = new aws_sqs.Queue(stack, 'Source1');
+    const replay1 = new aws_sqs.Queue(stack, 'Replay1');
+    const source2 = new aws_sqs.Queue(stack, 'Source2');
+    const replay2 = new aws_sqs.Queue(stack, 'Replay2');
+
+    new SqsReplayer(stack, 'Replayer1', {
+      sourceQueue: source1,
+      replayQueue: replay1,
+      code: fixtureCode(),
+    });
+    new SqsReplayer(stack, 'Replayer2', {
+      sourceQueue: source2,
+      replayQueue: replay2,
+      code: fixtureCode(),
+    });
+
+    const template = Template.fromStack(stack);
+    template.resourceCountIs('AWS::Lambda::Function', 1);
+    template.resourceCountIs('AWS::Lambda::EventSourceMapping', 2);
+    template.resourceCountIs('AWS::SSM::Parameter', 2);
+  });
+
+  test('shares a single lambda across stacks in an app', () => {
+    const app = new App();
+    const stack1 = new Stack(app, 'Stack1', { env });
+    const stack2 = new Stack(app, 'Stack2', { env });
+
+    const source1 = new aws_sqs.Queue(stack1, 'Source1');
+    const replay1 = new aws_sqs.Queue(stack1, 'Replay1');
+    const source2 = new aws_sqs.Queue(stack2, 'Source2');
+    const replay2 = new aws_sqs.Queue(stack2, 'Replay2');
+
+    new SqsReplayer(stack1, 'Replayer1', {
+      sourceQueue: source1,
+      replayQueue: replay1,
+      code: fixtureCode(),
+    });
+    new SqsReplayer(stack2, 'Replayer2', {
+      sourceQueue: source2,
+      replayQueue: replay2,
+      code: fixtureCode(),
+    });
+
+    const template1 = Template.fromStack(stack1);
+    const template2 = Template.fromStack(stack2);
+
+    expect(Object.keys(template1.findResources('AWS::Lambda::Function'))).toHaveLength(1);
+    expect(Object.keys(template2.findResources('AWS::Lambda::Function'))).toHaveLength(0);
+    template1.resourceCountIs('AWS::Lambda::EventSourceMapping', 2);
+    template2.resourceCountIs('AWS::Lambda::EventSourceMapping', 0);
+    template1.resourceCountIs('AWS::SSM::Parameter', 1);
+    template2.resourceCountIs('AWS::SSM::Parameter', 1);
+  });
+
+  test('creates a Rust lambda configured for the SSM config store', () => {
+    const app = new App();
+    const stack = new Stack(app, 'TestStack', { env });
     const sourceQueue = new aws_sqs.Queue(stack, 'SourceQueue');
     const replayQueue = new aws_sqs.Queue(stack, 'ReplayQueue');
 
@@ -25,7 +79,6 @@ describe('SqsReplayer', () => {
     });
 
     const template = Template.fromStack(stack);
-
     template.hasResourceProperties('AWS::Lambda::Function', {
       Runtime: 'provided.al2023',
       Architectures: ['arm64'],
@@ -34,28 +87,48 @@ describe('SqsReplayer', () => {
       Timeout: 10,
       Environment: {
         Variables: {
-          QUEUE_URL: {
-            Ref: stack.getLogicalId(sourceQueue.node.defaultChild as aws_sqs.CfnQueue),
-          },
+          REPLAY_CONFIG_STORE: 'ssm',
+          SSM_PARAMETER_PATH: '/sqs-replay/queues/',
           RUST_LOG: 'info',
         },
       },
     });
-
-    template.hasResourceProperties('AWS::Lambda::EventSourceMapping', {
-      BatchSize: 1,
-      FunctionResponseTypes: ['ReportBatchItemFailures'],
-      EventSourceArn: {
-        'Fn::GetAtt': [
-          stack.getLogicalId(replayQueue.node.defaultChild as aws_sqs.CfnQueue),
-          'Arn',
-        ],
-      },
-    });
   });
 
-  test('grants the lambda permission to send messages to the source queue', () => {
-    const stack = new Stack();
+  test('registers the replay queue config in SSM', () => {
+    const app = new App();
+    const stack = new Stack(app, 'TestStack', { env });
+    const sourceQueue = new aws_sqs.Queue(stack, 'SourceQueue');
+    const replayQueue = new aws_sqs.Queue(stack, 'ReplayQueue');
+
+    new SqsReplayer(stack, 'Replayer', {
+      sourceQueue,
+      replayQueue,
+      maxAttempts: 3,
+      backoffRate: Duration.seconds(60),
+      maximumDelay: Duration.minutes(5),
+      code: fixtureCode(),
+    });
+
+    const template = Template.fromStack(stack);
+    template.hasResourceProperties('AWS::SSM::Parameter', {
+      Type: 'String',
+      Name: Match.stringLikeRegexp('^/sqs-replay/queues/'),
+    });
+
+    const parameters = Object.values(template.findResources('AWS::SSM::Parameter'));
+    expect(parameters).toHaveLength(1);
+    const value = joinedString(parameters[0].Properties.Value);
+    expect(value).toContain('replayQueueArn');
+    expect(value).toContain('destinationQueueUrl');
+    expect(value).toContain('maxAttempts');
+    expect(value).toContain('backoffRate');
+    expect(value).toContain('maximumDelay');
+  });
+
+  test('grants the lambda ssm read and send to the source queue', () => {
+    const app = new App();
+    const stack = new Stack(app, 'TestStack', { env });
     const sourceQueue = new aws_sqs.Queue(stack, 'SourceQueue');
     const replayQueue = new aws_sqs.Queue(stack, 'ReplayQueue');
 
@@ -70,6 +143,20 @@ describe('SqsReplayer', () => {
       PolicyDocument: {
         Statement: Match.arrayWith([
           {
+            Action: Match.arrayWith(['ssm:GetParametersByPath', 'ssm:GetParameter']),
+            Effect: 'Allow',
+            Resource: {
+              'Fn::Join': [
+                '',
+                Match.arrayWith([
+                  'arn:',
+                  { Ref: 'AWS::Partition' },
+                  ':ssm:us-east-1:123456789012:parameter/sqs-replay/queues/*',
+                ]),
+              ],
+            },
+          },
+          {
             Action: Match.arrayWith(['sqs:SendMessage']),
             Effect: 'Allow',
             Resource: {
@@ -83,34 +170,18 @@ describe('SqsReplayer', () => {
       },
     });
   });
-
-  test('sets replay tuning environment variables when provided', () => {
-    const stack = new Stack();
-    const sourceQueue = new aws_sqs.Queue(stack, 'SourceQueue');
-    const replayQueue = new aws_sqs.Queue(stack, 'ReplayQueue');
-
-    new SqsReplayer(stack, 'Replayer', {
-      sourceQueue,
-      replayQueue,
-      maxAttempts: 3,
-      backoffRate: Duration.seconds(60),
-      maximumDelay: Duration.minutes(5),
-      code: fixtureCode(),
-    });
-
-    const template = Template.fromStack(stack);
-    template.hasResourceProperties('AWS::Lambda::Function', {
-      Environment: {
-        Variables: {
-          QUEUE_URL: {
-            Ref: stack.getLogicalId(sourceQueue.node.defaultChild as aws_sqs.CfnQueue),
-          },
-          RUST_LOG: 'info',
-          MAX_ATTEMPTS: '3',
-          BACKOFF_RATE: '60',
-          MAXIMUM_DELAY: '300',
-        },
-      },
-    });
-  });
 });
+
+/** Joins the string fragments of a synthesized `Fn::Join` value. */
+const joinedString = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value;
+  }
+  const parts = (value as { 'Fn::Join'?: [string, unknown[]] })?.['Fn::Join'];
+  if (Array.isArray(parts)) {
+    return parts[1]
+      .map((part) => (typeof part === 'string' ? part : ''))
+      .join('');
+  }
+  return '';
+};
