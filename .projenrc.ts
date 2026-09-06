@@ -23,7 +23,7 @@ const project = new awscdk.AwsCdkConstructLibrary({
   prerelease: 'beta',
   npmDistTag: 'beta',
   npmTrustedPublishing: true,
-  workflowNodeVersion: '22.x',
+  workflowNodeVersion: '24.x',
   repositoryUrl: 'https://github.com/tarantoj/sqs-replay-backoff.git',
   packageManager: javascript.NodePackageManager.NPM,
   jest: false,
