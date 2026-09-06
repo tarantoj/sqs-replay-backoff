@@ -39,7 +39,6 @@ import { SqsQueueWithReplay } from "@tarantoj/sqs-replay-backoff";
 
 const { queue, replayQueue, deadLetterQueue, replayer } =
   new SqsQueueWithReplay(this, "QueueWithReplay", {
-    fifo: false,                            // FIFO support
     visibilityTimeout: Duration.seconds(18), // default 18 seconds
     maxReceiveCount: 5,                     // default 5
     maxAttempts: 5,
@@ -47,6 +46,8 @@ const { queue, replayQueue, deadLetterQueue, replayer } =
 ```
 
 Any number of `SqsQueueWithReplay` constructs share the same reaper Lambda.
+
+> **FIFO queues are not supported.** SQS does not allow per-message delays on FIFO queues, and its 5-minute deduplication window silently drops replayed copies, so backoff replay is impossible. Passing `fifo: true` fails synthesis.
 
 ## Configuration store
 
@@ -72,14 +73,14 @@ flowchart LR
     App[Application] -- "fails repeatedly" --> Q[(Queue)]
     Q -- "redrive after maxReceiveCount" --> RQ[(ReplayQueue)]
     RQ -- "redrive after maxReceiveCount" --> DLQ[(DeadLetterQueue)]
-    RQ -- "event source - batchSize 1" --> Fn[Shared Replayer Lambda]
+    RQ -- "event source - batchSize 10" --> Fn[Shared Replayer Lambda]
     Fn <-->|"read config by replayQueueArn"| SSM[(SSM Parameter Store)]
     Fn -- "re-send with delay<br/>min(maximumDelay, backoffRate x 2^attempt)" --> Q
 ```
 
 1. Messages failing to be consumed are moved to the `ReplayQueue` by the source queue's redrive policy.
-2. The shared reaper Lambda (triggered by each `ReplayQueue` with `batchSize: 1` and `reportBatchItemFailures`) looks up the destination for the event's `eventSourceARN`, then re-sends each message to that source queue with an exponential delay tracked by the `sqs-dlq-replay-num` message attribute.
-3. Once a message has been replayed `maxAttempts` times it is reported as a failed batch item, so it is redriven from `ReplayQueue` into the final `DeadLetterQueue`.
+2. The shared reaper Lambda (triggered by each `ReplayQueue` with `batchSize: 10` and `reportBatchItemFailures`) looks up the destination for the event's `eventSourceARN`, then re-sends each message to that source queue with an exponential delay tracked by the `sqs-dlq-replay-num` message attribute.
+3. Once a message has been replayed `maxAttempts` times it is reported as a failed batch item, so it is redriven from `ReplayQueue` into the final `DeadLetterQueue`. Messages that are malformed (no body or an invalid replay count) are reported as failed batch items too, so a single bad record never fails the whole batch.
 
 Function-level Lambda options (memory, timeout, VPC, `functionName`, `logRetention`, `code`, `environment`) apply to the shared function the first time it is created in an app; later instances' values are ignored.
 

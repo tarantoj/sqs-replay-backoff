@@ -31,12 +31,18 @@ describe('SqsQueueWithReplay', () => {
     });
   });
 
-  test('honours fifo, visibility timeout, and max receive count', () => {
+  test('rejects fifo queues', () => {
+    const app = new App();
+    const stack = new Stack(app, 'TestStack', { env });
+
+    expect(() => new SqsQueueWithReplay(stack, 'QueueWithReplay', { fifo: true, code: fixtureCode() })).toThrow(/does not support FIFO queues/);
+  });
+
+  test('honours visibility timeout and max receive count', () => {
     const app = new App();
     const stack = new Stack(app, 'TestStack', { env });
 
     new SqsQueueWithReplay(stack, 'QueueWithReplay', {
-      fifo: true,
       visibilityTimeout: Duration.seconds(60),
       maxReceiveCount: 2,
       code: fixtureCode(),
@@ -45,15 +51,13 @@ describe('SqsQueueWithReplay', () => {
     const template = Template.fromStack(stack);
 
     const queues = Object.values(template.findResources('AWS::SQS::Queue'));
-    for (const queue of queues) {
-      expect(queue.Properties.FifoQueue).toBe(true);
-    }
+    expect(queues).toHaveLength(3);
 
-    const queuesWithRedrive = queues.filter((queue) => queue.Properties.RedrivePolicy);
+    const queuesWithRedrive = queues.filter((queue) => queue.Properties?.RedrivePolicy);
     expect(queuesWithRedrive).toHaveLength(2);
     for (const queue of queuesWithRedrive) {
-      expect(queue.Properties.VisibilityTimeout).toBe(60);
-      expect(queue.Properties.RedrivePolicy.maxReceiveCount).toBe(2);
+      expect(queue.Properties?.VisibilityTimeout).toBe(60);
+      expect(queue.Properties?.RedrivePolicy.maxReceiveCount).toBe(2);
     }
   });
 

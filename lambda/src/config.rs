@@ -43,7 +43,7 @@ pub struct ResolvedQueueConfig {
 
 impl QueueConfig {
     /// Applies the lambda's global defaults to any tuning value not set in the
-    /// stored config.
+    /// stored config, clamping the delay to SQS's 15-minute message timer limit.
     #[must_use]
     pub fn resolve(&self, defaults: &Environment) -> ResolvedQueueConfig {
         ResolvedQueueConfig {
@@ -54,7 +54,9 @@ impl QueueConfig {
                 .unwrap_or(defaults.backoff_rate_seconds),
             maximum_delay_seconds: self
                 .maximum_delay_seconds
-                .unwrap_or(defaults.maximum_delay_seconds),
+                .map_or(defaults.maximum_delay_seconds, |delay| {
+                    delay.min(crate::environment::MAXIMUM_DELAY_LIMIT_SECONDS)
+                }),
             use_jitter: self.use_jitter.unwrap_or(defaults.use_jitter),
         }
     }
@@ -284,6 +286,22 @@ mod tests {
             ..environment()
         };
         assert!(config.resolve(&environment).use_jitter);
+    }
+
+    #[test]
+    fn clamps_maximum_delay_to_the_sqs_timer_limit() {
+        let config: QueueConfig = serde_json::from_str(
+            r#"{
+                "replayQueueArn": "arn:aws:sqs:us-east-1:123456789012:ReplayQueue",
+                "destinationQueueUrl": "https://sqs.us-east-1.amazonaws.com/123456789012/Queue",
+                "maximumDelay": 1800
+            }"#,
+        )
+        .unwrap();
+        assert_eq!(
+            config.resolve(&environment()).maximum_delay_seconds,
+            crate::environment::MAXIMUM_DELAY_LIMIT_SECONDS
+        );
     }
 
     #[test]

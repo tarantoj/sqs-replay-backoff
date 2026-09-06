@@ -118,7 +118,6 @@ export class SqsReplayerSingleton extends Construct {
       timeout,
       tracing: aws_lambda.Tracing.ACTIVE,
       environment: {
-        REPLAY_CONFIG_STORE: 'ssm',
         SSM_PARAMETER_PATH: configPath,
         RUST_LOG: 'info',
         ...environment,
@@ -137,7 +136,7 @@ export class SqsReplayerSingleton extends Construct {
     });
     fn.addToRolePolicy(
       new aws_iam.PolicyStatement({
-        actions: ['ssm:GetParametersByPath', 'ssm:GetParameter'],
+        actions: ['ssm:GetParametersByPath'],
         resources: [pathArn],
       }),
     );

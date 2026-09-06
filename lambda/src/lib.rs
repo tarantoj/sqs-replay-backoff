@@ -3,7 +3,7 @@ pub mod config;
 pub mod environment;
 pub mod replay;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use aws_lambda_events::event::sqs::SqsEvent;
 use lambda_runtime::{Error, LambdaEvent};
@@ -27,14 +27,16 @@ pub struct BatchItemFailure {
     pub item_identifier: String,
 }
 
-/// Replays each SQS record back to its configured queue, reporting a batch
-/// item failure for any message that has exhausted its replay attempts, has no
-/// configuration yet, or could not be sent.
+/// Replays each SQS record back to its configured queue, reporting batch item failures.
+///
+/// A message is reported as a failure when it has exhausted its replay
+/// attempts, has no configuration yet, is malformed, or could not be sent.
 ///
 /// # Errors
 ///
-/// Returns an error when a record is missing its `eventSourceARN` or the
-/// configuration for a replay queue cannot be resolved.
+/// Returns an error only when a replay queue's configuration cannot be resolved
+/// (e.g. SSM is unavailable); a single malformed record is reported as a batch
+/// item failure instead of failing the whole batch.
 pub async fn handle(
     env: &Environment,
     sqs: &aws_sdk_sqs::Client,
@@ -59,13 +61,20 @@ pub async fn handle(
     drop(config_store);
 
     // Build the replay requests up front; any record without a request is a
-    // failure (no config or retry maximum reached).
+    // batch item failure (no config, retry maximum reached, or malformed), so
+    // only that message is redelivered rather than the whole batch.
     let mut failures = Vec::new();
     let mut sends: Vec<(String, ReplayRequest)> = Vec::new();
-    let mut reportable = HashSet::new();
-    for (index, record) in event.payload.records.iter().enumerate() {
+    for record in &event.payload.records {
         let config = match record.event_source_arn.as_deref() {
-            None => return Err(Error::from(ConfigError::Missing("eventSourceARN"))),
+            None => {
+                warn!(
+                    message_id = record.message_id.as_deref().unwrap_or("unknown"),
+                    "Record has no eventSourceARN."
+                );
+                push_failure(&mut failures, record.message_id.as_ref());
+                continue;
+            }
             Some(arn) => match resolved.get(arn) {
                 Some(Some(config)) => config,
                 Some(None) => {
@@ -82,13 +91,10 @@ pub async fn handle(
 
         match build_replay_request(config, record) {
             Ok(Some(request)) => {
-                let message_id = record
-                    .message_id
-                    .clone()
-                    .unwrap_or_else(|| format!("entry-{index}"));
-                if record.message_id.is_some() {
-                    reportable.insert(message_id.clone());
-                }
+                let Some(message_id) = record.message_id.clone() else {
+                    warn!("Skipping record without a message id; it cannot be reported as a batch item failure.");
+                    continue;
+                };
                 sends.push((message_id, request));
             }
             Ok(None) => {
@@ -98,18 +104,23 @@ pub async fn handle(
                 );
                 push_failure(&mut failures, record.message_id.as_ref());
             }
-            Err(error) => return Err(Error::from(error)),
+            Err(error) => {
+                warn!(
+                    message_id = record.message_id.as_deref().unwrap_or("unknown"),
+                    %error,
+                    "Rejecting malformed message."
+                );
+                push_failure(&mut failures, record.message_id.as_ref());
+            }
         }
     }
 
     // Send the replay requests; any message SQS rejected is reported as a
     // batch item failure so only it is redelivered, not the whole batch.
     for message_id in send_replay_batch(sqs, sends).await {
-        if reportable.contains(&message_id) {
-            failures.push(BatchItemFailure {
-                item_identifier: message_id,
-            });
-        }
+        failures.push(BatchItemFailure {
+            item_identifier: message_id,
+        });
     }
 
     Ok(BatchResponse {

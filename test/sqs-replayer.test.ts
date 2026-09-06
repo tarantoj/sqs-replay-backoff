@@ -87,7 +87,6 @@ describe('SqsReplayer', () => {
       TracingConfig: { Mode: 'Active' },
       Environment: {
         Variables: {
-          REPLAY_CONFIG_STORE: 'ssm',
           SSM_PARAMETER_PATH: '/sqs-replay/queues/',
           RUST_LOG: 'info',
         },
@@ -128,6 +127,57 @@ describe('SqsReplayer', () => {
     expect(value).toContain('useJitter');
   });
 
+  test('rejects fifo source queues', () => {
+    const app = new App();
+    const stack = new Stack(app, 'TestStack', { env });
+    const fifoSource = new aws_sqs.Queue(stack, 'FifoSource', { fifo: true });
+    const replayQueue = new aws_sqs.Queue(stack, 'ReplayQueue');
+
+    expect(
+      () =>
+        new SqsReplayer(stack, 'Replayer', {
+          sourceQueue: fifoSource,
+          replayQueue,
+          code: fixtureCode(),
+        }),
+    ).toThrow(/does not support FIFO queues/);
+  });
+
+  test('rejects out-of-range tuning options', () => {
+    const app = new App();
+    const stack = new Stack(app, 'TestStack', { env });
+    const sourceQueue = new aws_sqs.Queue(stack, 'SourceQueue');
+    const replayQueue = new aws_sqs.Queue(stack, 'ReplayQueue');
+
+    expect(
+      () =>
+        new SqsReplayer(stack, 'ReplayerMaxDelay', {
+          sourceQueue,
+          replayQueue,
+          maximumDelay: Duration.minutes(30),
+          code: fixtureCode(),
+        }),
+    ).toThrow(/maximumDelay must be between 1 second and 15 minutes/);
+    expect(
+      () =>
+        new SqsReplayer(stack, 'ReplayerMaxAttempts', {
+          sourceQueue,
+          replayQueue,
+          maxAttempts: 0,
+          code: fixtureCode(),
+        }),
+    ).toThrow(/maxAttempts must be at least 1/);
+    expect(
+      () =>
+        new SqsReplayer(stack, 'ReplayerBatchSize', {
+          sourceQueue,
+          replayQueue,
+          batchSize: 0,
+          code: fixtureCode(),
+        }),
+    ).toThrow(/batchSize must be between 1 and 10000/);
+  });
+
   test('grants the lambda ssm read and send to the source queue', () => {
     const app = new App();
     const stack = new Stack(app, 'TestStack', { env });
@@ -145,7 +195,7 @@ describe('SqsReplayer', () => {
       PolicyDocument: {
         Statement: Match.arrayWith([
           {
-            Action: Match.arrayWith(['ssm:GetParametersByPath', 'ssm:GetParameter']),
+            Action: 'ssm:GetParametersByPath',
             Effect: 'Allow',
             Resource: {
               'Fn::Join': ['', Match.arrayWith(['arn:', { Ref: 'AWS::Partition' }, ':ssm:us-east-1:123456789012:parameter/sqs-replay/queues/*'])],

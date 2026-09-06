@@ -4,7 +4,10 @@ import { SqsReplayer } from './sqs-replayer';
 
 export interface SqsQueueWithReplayProps {
   /**
-   * Whether the queues are FIFO.
+   * Whether the queues are FIFO. FIFO queues are not supported: SQS does not
+   * allow per-message delays on FIFO queues and its 5-minute deduplication
+   * window silently drops replayed copies, so backoff replay is impossible.
+   * Setting this to `true` fails synthesis.
    * @default false
    */
   readonly fifo?: boolean;
@@ -104,20 +107,22 @@ export class SqsQueueWithReplay extends Construct {
   constructor(scope: Construct, id: string, props: SqsQueueWithReplayProps = {}) {
     super(scope, id);
 
-    const { fifo = false, visibilityTimeout = Duration.seconds(18), maxReceiveCount = 5 } = props;
+    if (props.fifo) {
+      throw new Error(
+        'SqsQueueWithReplay does not support FIFO queues: SQS does not support per-message delays on FIFO queues and its 5-minute deduplication window silently drops replayed copies. Use a standard queue.',
+      );
+    }
 
-    this.deadLetterQueue = new aws_sqs.Queue(this, 'DeadLetterQueue', {
-      fifo,
-    });
+    const { visibilityTimeout = Duration.seconds(18), maxReceiveCount = 5 } = props;
+
+    this.deadLetterQueue = new aws_sqs.Queue(this, 'DeadLetterQueue');
 
     this.replayQueue = new aws_sqs.Queue(this, 'ReplayQueue', {
-      fifo,
       visibilityTimeout,
       deadLetterQueue: { queue: this.deadLetterQueue, maxReceiveCount },
     });
 
     this.queue = new aws_sqs.Queue(this, 'Queue', {
-      fifo,
       visibilityTimeout,
       deadLetterQueue: { queue: this.replayQueue, maxReceiveCount },
     });

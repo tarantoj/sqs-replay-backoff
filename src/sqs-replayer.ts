@@ -112,6 +112,13 @@ export class SqsReplayer extends Construct {
   constructor(scope: Construct, id: string, props: SqsReplayerProps) {
     super(scope, id);
 
+    if (props.sourceQueue.fifo) {
+      throw new Error(
+        'SqsReplayer does not support FIFO queues: SQS does not support per-message delays on FIFO queues and its 5-minute deduplication window silently drops replayed copies. Use a standard queue.',
+      );
+    }
+    validateTuning(props);
+
     const singleton = SqsReplayerSingleton.of(this, {
       memorySize: props.memorySize,
       timeout: props.timeout,
@@ -163,3 +170,25 @@ export class SqsReplayer extends Construct {
 
 /** Keeps construct paths valid as SSM parameter names. */
 const sanitize = (value: string) => value.replace(/[^a-zA-Z0-9_./-]/g, '-');
+
+/** Validates the backoff tuning options the construct writes to SSM. */
+const validateTuning = (props: SqsReplayerProps): void => {
+  if (props.maxAttempts !== undefined && props.maxAttempts < 1) {
+    throw new Error('maxAttempts must be at least 1');
+  }
+  if (props.backoffRate !== undefined) {
+    const backoffRate = props.backoffRate.toSeconds();
+    if (backoffRate < 1) {
+      throw new Error('backoffRate must be at least 1 second');
+    }
+  }
+  if (props.maximumDelay !== undefined) {
+    const maximumDelay = props.maximumDelay.toSeconds();
+    if (maximumDelay < 1 || maximumDelay > 900) {
+      throw new Error('maximumDelay must be between 1 second and 15 minutes');
+    }
+  }
+  if (props.batchSize !== undefined && (props.batchSize < 1 || props.batchSize > 10000)) {
+    throw new Error('batchSize must be between 1 and 10000');
+  }
+};

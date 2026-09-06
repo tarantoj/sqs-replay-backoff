@@ -283,7 +283,7 @@ async fn reports_every_entry_when_the_batch_call_errors() {
 }
 
 #[tokio::test]
-async fn errors_when_a_record_has_no_event_source_arn() {
+async fn reports_a_batch_item_failure_when_a_record_has_no_event_source_arn() {
     let harness = Harness::start().await;
     mount_ssm_config(
         &harness.server,
@@ -292,8 +292,72 @@ async fn errors_when_a_record_has_no_event_source_arn() {
     )
     .await;
 
-    let result = harness.run(vec![record_without_arn("id-1", "body")]).await;
-    assert!(result.is_err());
+    let response = harness
+        .run(vec![record_without_arn("id-1", "body")])
+        .await
+        .unwrap();
+    assert_eq!(failure_ids(&response), vec!["id-1"]);
+    assert!(batch_requests(&harness.server).await.is_empty());
+}
+
+#[tokio::test]
+async fn reports_a_batch_item_failure_when_a_replay_num_is_not_a_number() {
+    let harness = Harness::start().await;
+    mount_ssm_config(
+        &harness.server,
+        &[("queue/config", config_all_tuning())],
+        None,
+    )
+    .await;
+
+    let record: aws_lambda_events::event::sqs::SqsMessage = serde_json::from_value(json!({
+        "messageId": "id-1",
+        "receiptHandle": "receipt-id-1",
+        "body": "body",
+        "attributes": {},
+        "messageAttributes": {
+            REPLAY_NUM_PROPERTY_NAME: {
+                "stringValue": "not-a-number",
+                "stringListValues": [],
+                "binaryListValues": [],
+                "dataType": "String"
+            }
+        },
+        "eventSourceARN": REPLAY_ARN,
+        "eventSource": "aws:sqs",
+        "awsRegion": "us-east-1"
+    }))
+    .unwrap();
+
+    let response = harness.run(vec![record]).await.unwrap();
+    assert_eq!(failure_ids(&response), vec!["id-1"]);
+    assert!(batch_requests(&harness.server).await.is_empty());
+}
+
+#[tokio::test]
+async fn reports_a_batch_item_failure_when_a_message_has_no_body() {
+    let harness = Harness::start().await;
+    mount_ssm_config(
+        &harness.server,
+        &[("queue/config", config_all_tuning())],
+        None,
+    )
+    .await;
+
+    let record: aws_lambda_events::event::sqs::SqsMessage = serde_json::from_value(json!({
+        "messageId": "id-1",
+        "receiptHandle": "receipt-id-1",
+        "attributes": {},
+        "messageAttributes": {},
+        "eventSourceARN": REPLAY_ARN,
+        "eventSource": "aws:sqs",
+        "awsRegion": "us-east-1"
+    }))
+    .unwrap();
+
+    let response = harness.run(vec![record]).await.unwrap();
+    assert_eq!(failure_ids(&response), vec!["id-1"]);
+    assert!(batch_requests(&harness.server).await.is_empty());
 }
 
 #[tokio::test]
