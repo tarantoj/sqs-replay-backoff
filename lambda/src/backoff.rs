@@ -1,31 +1,8 @@
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use rand::Rng;
 
-/// Monotonic counter mixed into the PRNG seed so concurrent invocations (and
-/// back-to-back calls within the same nanosecond) do not draw identical
-/// streams.
-static COUNTER: AtomicU64 = AtomicU64::new(0);
-
-/// Returns a random number between 0 and `max` inclusive, using a small
-/// dependency-free xorshift64* generator seeded from the clock and a counter.
-#[allow(
-    clippy::cast_possible_truncation,
-    reason = "result of the modulo is bounded by max, a u32"
-)]
+/// Returns a random number between 0 and `max` inclusive.
 fn random_int(max: u32) -> u32 {
-    if max == 0 {
-        return 0;
-    }
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| u64::from(duration.subsec_nanos()));
-    let mut state = COUNTER.fetch_add(1, Ordering::Relaxed)
-        ^ (nanos << 32)
-        ^ nanos.wrapping_mul(0x9E37_79B9_7F4A_7C15);
-    state ^= state >> 12;
-    state ^= state << 25;
-    state ^= state >> 27;
-    (state.wrapping_mul(0x2545_F491_4F6C_DD1D) % (u64::from(max) + 1)) as u32
+    rand::rng().random_range(0..=max)
 }
 
 /// `min(max, base * 2^attempt)`
