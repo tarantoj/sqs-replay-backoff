@@ -41,7 +41,7 @@ jobs:
         id: setup_node_js
         uses: actions/setup-node@v7.0.0
         with:
-          node-version: lts/*
+          node-version: 22.x
           package-manager-cache: false
       - name: Install dependencies
         id: install_dependencies
@@ -97,7 +97,7 @@ jobs:
     steps:
       - uses: actions/setup-node@v7.0.0
         with:
-          node-version: lts/*
+          node-version: 22.x
           package-manager-cache: false
       - name: Download build artifacts
         id: download_build_artifacts
@@ -119,18 +119,19 @@ jobs:
         run: |-
           tag=$(cat "$RELEASE_TAG_FILE") &&
           gh release view "$tag" -R "$GITHUB_REPOSITORY" 2>/dev/null ||
-          gh release create "$tag" -R "$GITHUB_REPOSITORY" -F "$CHANGELOG_FILE" -t "$tag" --target "$GITHUB_SHA"
+          gh release create "$tag" -R "$GITHUB_REPOSITORY" -F "$CHANGELOG_FILE" -t "$tag" --target "$GITHUB_SHA" --prerelease
   release_npm:
     name: Publish to npm
     needs: release
     runs-on: ubuntu-latest
     permissions:
+      id-token: write
       contents: read
     if: needs.release.outputs.tag_exists != 'true' && needs.release.outputs.latest_commit == github.sha
     steps:
       - uses: actions/setup-node@v7.0.0
         with:
-          node-version: lts/*
+          node-version: 22.x
           package-manager-cache: false
       - name: Download build artifacts
         id: download_build_artifacts
@@ -165,8 +166,8 @@ jobs:
       - name: Release
         id: release
         env:
-          NPM_DIST_TAG: latest
+          NPM_DIST_TAG: beta
           NPM_REGISTRY: registry.npmjs.org
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TRUSTED_PUBLISHER: "true"
           PUBLIB_DRYRUN: ${{ inputs.dry_run }}
         run: npx '-p' 'publib@latest' 'publib-npm'
