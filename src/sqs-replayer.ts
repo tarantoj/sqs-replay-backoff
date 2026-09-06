@@ -1,12 +1,4 @@
-import {
-  aws_ec2,
-  aws_lambda,
-  aws_lambda_event_sources,
-  aws_logs,
-  aws_sqs,
-  aws_ssm,
-  Duration,
-} from 'aws-cdk-lib';
+import { aws_ec2, aws_lambda, aws_lambda_event_sources, aws_logs, aws_sqs, aws_ssm, Duration } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { SqsReplayerSingleton } from './sqs-replayer-singleton';
 

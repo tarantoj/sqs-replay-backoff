@@ -264,6 +264,22 @@
       "name": "pre-compile",
       "description": "Prepare the project for compilation"
     },
+    "prettier:check": {
+      "name": "prettier:check",
+      "steps": [
+        {
+          "exec": "prettier --check src test projenrc .projenrc.ts"
+        }
+      ]
+    },
+    "prettier:write": {
+      "name": "prettier:write",
+      "steps": [
+        {
+          "exec": "prettier --write src test projenrc .projenrc.ts"
+        }
+      ]
+    },
     "release": {
       "name": "release",
       "description": "Prepare a release from \"main\" branch",
@@ -296,6 +312,9 @@
       "name": "test",
       "description": "Run tests",
       "steps": [
+        {
+          "spawn": "prettier:check"
+        },
         {
           "spawn": "bundle:lambda"
         },
@@ -340,7 +359,7 @@
             "--peer",
             "--no-deprecated",
             "--dep=dev,prod,peer,optional",
-            "--filter=eslint-import-resolver-typescript,eslint-plugin-import,jsii-diff,jsii-pacmak,projen,ts-node,vitest"
+            "--filter=eslint-config-prettier,eslint-import-resolver-typescript,eslint-plugin-import,eslint-plugin-prettier,jsii-diff,jsii-pacmak,prettier,projen,ts-node,vitest"
           ]
         },
         {
@@ -350,18 +369,20 @@
           "execArgs": [
             "npm",
             "update",
-            "@stylistic/eslint-plugin",
             "@types/node",
             "@typescript-eslint/eslint-plugin",
             "@typescript-eslint/parser",
             "commit-and-tag-version",
+            "eslint-config-prettier",
             "eslint-import-resolver-typescript",
             "eslint-plugin-import",
+            "eslint-plugin-prettier",
             "eslint",
             "jsii-diff",
             "jsii-pacmak",
             "jsii-rosetta",
             "jsii",
+            "prettier",
             "projen",
             "ts-node",
             "typescript",

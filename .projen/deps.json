@@ -1,11 +1,6 @@
 {
   "dependencies": [
     {
-      "name": "@stylistic/eslint-plugin",
-      "version": "^2",
-      "type": "build"
-    },
-    {
       "name": "@types/node",
       "version": "ts5.9",
       "type": "build"
@@ -26,11 +21,19 @@
       "type": "build"
     },
     {
+      "name": "eslint-config-prettier",
+      "type": "build"
+    },
+    {
       "name": "eslint-import-resolver-typescript",
       "type": "build"
     },
     {
       "name": "eslint-plugin-import",
+      "type": "build"
+    },
+    {
+      "name": "eslint-plugin-prettier",
       "type": "build"
     },
     {
@@ -54,6 +57,10 @@
     {
       "name": "jsii",
       "version": "6.0.12",
+      "type": "build"
+    },
+    {
+      "name": "prettier",
       "type": "build"
     },
     {

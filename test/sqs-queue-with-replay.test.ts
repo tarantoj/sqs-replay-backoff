@@ -5,8 +5,7 @@ import { describe, expect, test } from 'vitest';
 import { SqsQueueWithReplay } from '../src/sqs-queue-with-replay';
 
 const env = { account: '123456789012', region: 'us-east-1' };
-const fixtureCode = () =>
-  aws_lambda.Code.fromAsset(join(__dirname, 'fixtures', 'bootstrap-dir'));
+const fixtureCode = () => aws_lambda.Code.fromAsset(join(__dirname, 'fixtures', 'bootstrap-dir'));
 
 describe('SqsQueueWithReplay', () => {
   test('creates the queue, replay queue, and DLQ redrive chain', () => {
@@ -50,9 +49,7 @@ describe('SqsQueueWithReplay', () => {
       expect(queue.Properties.FifoQueue).toBe(true);
     }
 
-    const queuesWithRedrive = queues.filter(
-      (queue) => queue.Properties.RedrivePolicy,
-    );
+    const queuesWithRedrive = queues.filter((queue) => queue.Properties.RedrivePolicy);
     expect(queuesWithRedrive).toHaveLength(2);
     for (const queue of queuesWithRedrive) {
       expect(queue.Properties.VisibilityTimeout).toBe(60);
@@ -104,9 +101,7 @@ const joinedString = (value: unknown): string => {
   }
   const parts = (value as { 'Fn::Join'?: [string, unknown[]] })?.['Fn::Join'];
   if (Array.isArray(parts)) {
-    return parts[1]
-      .map((part) => (typeof part === 'string' ? part : ''))
-      .join('');
+    return parts[1].map((part) => (typeof part === 'string' ? part : '')).join('');
   }
   return '';
 };

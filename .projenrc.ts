@@ -30,15 +30,15 @@ const project = new awscdk.AwsCdkConstructLibrary({
   lambdaExtensionAutoDiscover: false,
   integrationTestAutoDiscover: false,
   docgen: false,
-  gitignore: [
-    '.devenv*',
-    'devenv.local.nix',
-    'devenv.local.yaml',
-    '.direnv',
-    '.pre-commit-config.yaml',
-    '/lambda/target/',
-    '/assets/',
-  ],
+  prettier: true,
+  prettierOptions: {
+    settings: {
+      printWidth: 150,
+      singleQuote: true,
+      trailingComma: javascript.TrailingComma.ALL,
+    },
+  },
+  gitignore: ['.devenv*', 'devenv.local.nix', 'devenv.local.yaml', '.direnv', '.pre-commit-config.yaml', '/lambda/target/', '/assets/'],
   // Rust toolchain for cross-compiling the bundled lambda in CI
   buildWorkflowOptions: { preBuildSteps: rustSetupSteps },
   releaseWorkflowSetupSteps: rustSetupSteps,
@@ -69,5 +69,18 @@ const bundleLambda = project.addTask('bundle:lambda', {
 const testTask = project.tasks.tryFind('test');
 testTask?.prependExec('vitest run');
 testTask?.prependSpawn(bundleLambda);
+
+for (const pattern of ['/lib/', '/dist/', '/assets/', '/lambda/target/', 'coverage', '**/tsconfig.json']) {
+  project.prettier?.addIgnorePattern(pattern);
+}
+
+const prettierFiles = ['src', 'test', 'projenrc', '.projenrc.ts'];
+project.addTask('prettier:check', {
+  steps: [{ exec: `prettier --check ${prettierFiles.join(' ')}` }],
+});
+project.addTask('prettier:write', {
+  steps: [{ exec: `prettier --write ${prettierFiles.join(' ')}` }],
+});
+testTask?.prependSpawn(project.tasks.tryFind('prettier:check')!);
 
 project.synth();

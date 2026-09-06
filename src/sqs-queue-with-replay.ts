@@ -97,11 +97,7 @@ export class SqsQueueWithReplay extends Construct {
   constructor(scope: Construct, id: string, props: SqsQueueWithReplayProps = {}) {
     super(scope, id);
 
-    const {
-      fifo = false,
-      visibilityTimeout = Duration.seconds(18),
-      maxReceiveCount = 5,
-    } = props;
+    const { fifo = false, visibilityTimeout = Duration.seconds(18), maxReceiveCount = 5 } = props;
 
     this.deadLetterQueue = new aws_sqs.Queue(this, 'DeadLetterQueue', {
       fifo,

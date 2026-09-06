@@ -5,8 +5,7 @@ import { describe, expect, test } from 'vitest';
 import { SqsReplayer } from '../src/sqs-replayer';
 
 const env = { account: '123456789012', region: 'us-east-1' };
-const fixtureCode = () =>
-  aws_lambda.Code.fromAsset(join(__dirname, 'fixtures', 'bootstrap-dir'));
+const fixtureCode = () => aws_lambda.Code.fromAsset(join(__dirname, 'fixtures', 'bootstrap-dir'));
 
 describe('SqsReplayer', () => {
   test('shares a single lambda across replayers', () => {
@@ -148,24 +147,14 @@ describe('SqsReplayer', () => {
             Action: Match.arrayWith(['ssm:GetParametersByPath', 'ssm:GetParameter']),
             Effect: 'Allow',
             Resource: {
-              'Fn::Join': [
-                '',
-                Match.arrayWith([
-                  'arn:',
-                  { Ref: 'AWS::Partition' },
-                  ':ssm:us-east-1:123456789012:parameter/sqs-replay/queues/*',
-                ]),
-              ],
+              'Fn::Join': ['', Match.arrayWith(['arn:', { Ref: 'AWS::Partition' }, ':ssm:us-east-1:123456789012:parameter/sqs-replay/queues/*'])],
             },
           },
           {
             Action: Match.arrayWith(['sqs:SendMessage']),
             Effect: 'Allow',
             Resource: {
-              'Fn::GetAtt': [
-                stack.getLogicalId(sourceQueue.node.defaultChild as aws_sqs.CfnQueue),
-                'Arn',
-              ],
+              'Fn::GetAtt': [stack.getLogicalId(sourceQueue.node.defaultChild as aws_sqs.CfnQueue), 'Arn'],
             },
           },
         ]),
@@ -181,9 +170,7 @@ const joinedString = (value: unknown): string => {
   }
   const parts = (value as { 'Fn::Join'?: [string, unknown[]] })?.['Fn::Join'];
   if (Array.isArray(parts)) {
-    return parts[1]
-      .map((part) => (typeof part === 'string' ? part : ''))
-      .join('');
+    return parts[1].map((part) => (typeof part === 'string' ? part : '')).join('');
   }
   return '';
 };

@@ -1,13 +1,5 @@
 import { join } from 'path';
-import {
-  aws_ec2,
-  aws_iam,
-  aws_lambda,
-  aws_logs,
-  Duration,
-  Stack,
-  Stage,
-} from 'aws-cdk-lib';
+import { aws_ec2, aws_iam, aws_lambda, aws_logs, Duration, Stack, Stage } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 
 /** Default SSM parameter path holding per-queue replay configs. */
@@ -77,15 +69,10 @@ export class SqsReplayerSingleton extends Construct {
    * Returns the app-scoped replayer singleton, creating it in the caller's
    * stack on first use.
    */
-  public static of(
-    scope: Construct,
-    props: SqsReplayerSingletonProps,
-  ): SqsReplayerSingleton {
+  public static of(scope: Construct, props: SqsReplayerSingletonProps): SqsReplayerSingleton {
     const stage = Stage.of(scope);
     if (!stage) {
-      throw new Error(
-        'SqsReplayerSingleton must be used within an AWS CDK App',
-      );
+      throw new Error('SqsReplayerSingleton must be used within an AWS CDK App');
     }
     const existing = singletons.get(stage);
     if (existing) {
