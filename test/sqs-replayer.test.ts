@@ -107,6 +107,7 @@ describe('SqsReplayer', () => {
       maxAttempts: 3,
       backoffRate: Duration.seconds(60),
       maximumDelay: Duration.minutes(5),
+      useJitter: true,
       code: fixtureCode(),
     });
 
@@ -124,6 +125,7 @@ describe('SqsReplayer', () => {
     expect(value).toContain('maxAttempts');
     expect(value).toContain('backoffRate');
     expect(value).toContain('maximumDelay');
+    expect(value).toContain('useJitter');
   });
 
   test('grants the lambda ssm read and send to the source queue', () => {

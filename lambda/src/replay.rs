@@ -6,7 +6,7 @@ use aws_sdk_sqs::types::MessageAttributeValue;
 use aws_sdk_sqs::Client;
 use aws_smithy_types::Blob;
 
-use crate::backoff::backoff;
+use crate::backoff::{backoff, backoff_with_jitter};
 use crate::config::ResolvedQueueConfig;
 
 /// Message attribute tracking how many times a message has been replayed.
@@ -39,15 +39,22 @@ pub fn build_replay_request(
     Ok(Some(ReplayRequest {
         queue_url: config.queue_url.clone(),
         message_body: record.body.clone().ok_or(ReplayError::MissingBody)?,
-        delay_seconds: backoff(
-            config.backoff_rate_seconds,
-            config.maximum_delay_seconds,
-            replay_num,
-        ),
+        delay_seconds: delay_seconds(config, replay_num),
         message_attributes: map_message_attributes(&record.message_attributes, replay_num),
         message_deduplication_id: record.attributes.get("MessageDeduplicationId").cloned(),
         message_group_id: record.attributes.get("MessageGroupId").cloned(),
     }))
+}
+
+/// Computes the delay for a replay attempt, optionally adding full jitter.
+fn delay_seconds(config: &ResolvedQueueConfig, attempt: u32) -> u32 {
+    let base = config.backoff_rate_seconds;
+    let max = config.maximum_delay_seconds;
+    if config.use_jitter {
+        backoff_with_jitter(base, max, attempt)
+    } else {
+        backoff(base, max, attempt)
+    }
 }
 
 /// Sends a replay request back to the queue.
@@ -172,6 +179,7 @@ mod tests {
             max_attempts: 5,
             backoff_rate_seconds: 30,
             maximum_delay_seconds: 900,
+            use_jitter: false,
         }
     }
 
@@ -255,6 +263,16 @@ mod tests {
             "https://sqs.us-east-1.amazonaws.com/123456789012/OtherQueue"
         );
         assert_eq!(request.delay_seconds, 120);
+    }
+
+    #[test]
+    fn adds_full_jitter_when_enabled() {
+        let mut custom = config();
+        custom.use_jitter = true;
+        for _ in 0..100 {
+            let request = build_replay_request(&custom, &record()).unwrap().unwrap();
+            assert!(request.delay_seconds <= 900);
+        }
     }
 
     #[test]

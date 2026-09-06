@@ -1,5 +1,4 @@
 /// Returns a random number between 0 and `max` inclusive.
-#[allow(dead_code)]
 fn random_int(max: u32) -> u32 {
     use rand::Rng;
     rand::rng().random_range(0..=max)
@@ -24,7 +23,6 @@ pub fn backoff(base: u32, max: u32, attempt: u32) -> u32 {
 ///
 /// See "Full Jitter" in
 /// [Exponential Backoff and Jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/).
-#[allow(dead_code)]
 pub fn backoff_with_jitter(base: u32, max: u32, attempt: u32) -> u32 {
     random_int(backoff(base, max, attempt))
 }

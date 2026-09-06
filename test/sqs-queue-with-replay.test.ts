@@ -60,6 +60,28 @@ describe('SqsQueueWithReplay', () => {
     }
   });
 
+  test('forwards backoff tuning to the replayer config', () => {
+    const app = new App();
+    const stack = new Stack(app, 'TestStack', { env });
+
+    new SqsQueueWithReplay(stack, 'QueueWithReplay', {
+      maxAttempts: 3,
+      backoffRate: Duration.seconds(60),
+      maximumDelay: Duration.minutes(5),
+      useJitter: true,
+      code: fixtureCode(),
+    });
+
+    const template = Template.fromStack(stack);
+    const parameters = Object.values(template.findResources('AWS::SSM::Parameter'));
+    expect(parameters).toHaveLength(1);
+    const value = joinedString(parameters[0].Properties.Value);
+    expect(value).toContain('maxAttempts');
+    expect(value).toContain('backoffRate');
+    expect(value).toContain('maximumDelay');
+    expect(value).toContain('useJitter');
+  });
+
   test('exposes the queue, replay queue, DLQ, and replayer', () => {
     const app = new App();
     const stack = new Stack(app, 'TestStack', { env });
@@ -74,3 +96,17 @@ describe('SqsQueueWithReplay', () => {
     expect(queueWithReplay.replayer).toBeDefined();
   });
 });
+
+/** Joins the string fragments of a synthesized `Fn::Join` value. */
+const joinedString = (value: unknown): string => {
+  if (typeof value === 'string') {
+    return value;
+  }
+  const parts = (value as { 'Fn::Join'?: [string, unknown[]] })?.['Fn::Join'];
+  if (Array.isArray(parts)) {
+    return parts[1]
+      .map((part) => (typeof part === 'string' ? part : ''))
+      .join('');
+  }
+  return '';
+};

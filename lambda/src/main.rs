@@ -36,6 +36,7 @@ async fn main() -> Result<(), Error> {
         max_attempts = env.max_attempts,
         backoff_rate_seconds = env.backoff_rate_seconds,
         maximum_delay_seconds = env.maximum_delay_seconds,
+        use_jitter = env.use_jitter,
         "Configuration"
     );
 
@@ -115,6 +116,7 @@ async fn resolve_config(
             max_attempts: env.max_attempts,
             backoff_rate_seconds: env.backoff_rate_seconds,
             maximum_delay_seconds: env.maximum_delay_seconds,
+            use_jitter: env.use_jitter,
         }));
     }
 

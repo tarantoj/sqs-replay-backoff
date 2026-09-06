@@ -26,6 +26,9 @@ pub struct QueueConfig {
     /// Upper bound for the backoff delay, in seconds.
     #[serde(rename = "maximumDelay", default)]
     pub maximum_delay_seconds: Option<u32>,
+    /// Whether to add full jitter to the backoff delay.
+    #[serde(rename = "useJitter", default)]
+    pub use_jitter: Option<bool>,
 }
 
 /// A [`QueueConfig`] with global defaults applied, ready for the replay logic.
@@ -35,6 +38,7 @@ pub struct ResolvedQueueConfig {
     pub max_attempts: u32,
     pub backoff_rate_seconds: u32,
     pub maximum_delay_seconds: u32,
+    pub use_jitter: bool,
 }
 
 impl QueueConfig {
@@ -50,6 +54,7 @@ impl QueueConfig {
             maximum_delay_seconds: self
                 .maximum_delay_seconds
                 .unwrap_or(defaults.maximum_delay_seconds),
+            use_jitter: self.use_jitter.unwrap_or(defaults.use_jitter),
         }
     }
 }
@@ -176,6 +181,7 @@ mod tests {
             max_attempts: 5,
             backoff_rate_seconds: 30,
             maximum_delay_seconds: 900,
+            use_jitter: false,
         }
     }
 
@@ -202,6 +208,7 @@ mod tests {
         assert_eq!(config.max_attempts, Some(3));
         assert_eq!(config.backoff_rate_seconds, Some(60));
         assert_eq!(config.maximum_delay_seconds, Some(300));
+        assert_eq!(config.use_jitter, None);
     }
 
     #[test]
@@ -221,6 +228,7 @@ mod tests {
         assert_eq!(resolved.max_attempts, 5);
         assert_eq!(resolved.backoff_rate_seconds, 30);
         assert_eq!(resolved.maximum_delay_seconds, 900);
+        assert!(!resolved.use_jitter);
     }
 
     #[test]
@@ -242,6 +250,35 @@ mod tests {
         assert_eq!(resolved.max_attempts, 2);
         assert_eq!(resolved.backoff_rate_seconds, 10);
         assert_eq!(resolved.maximum_delay_seconds, 120);
+    }
+
+    #[test]
+    fn resolves_jitter_from_the_config_and_environment() {
+        let config: QueueConfig = serde_json::from_str(
+            r#"{
+                "replayQueueArn": "arn:aws:sqs:us-east-1:123456789012:ReplayQueue",
+                "destinationQueueUrl": "https://sqs.us-east-1.amazonaws.com/123456789012/Queue",
+                "useJitter": true
+            }"#,
+        )
+        .unwrap();
+        assert!(config.resolve(&environment()).use_jitter);
+    }
+
+    #[test]
+    fn jitter_falls_back_to_the_environment_default() {
+        let config: QueueConfig = serde_json::from_str(
+            r#"{
+                "replayQueueArn": "arn:aws:sqs:us-east-1:123456789012:ReplayQueue",
+                "destinationQueueUrl": "https://sqs.us-east-1.amazonaws.com/123456789012/Queue"
+            }"#,
+        )
+        .unwrap();
+        let environment = Environment {
+            use_jitter: true,
+            ..environment()
+        };
+        assert!(config.resolve(&environment).use_jitter);
     }
 
     #[test]

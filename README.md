@@ -8,7 +8,7 @@ The replayer is a single shared [Rust](https://www.rust-lang.org/) Lambda (custo
 
 ### `SqsReplayer`
 
-Registers a replay queue with the app's shared replayer Lambda. The Lambda is triggered by the `replayQueue` (typically the DLQ of the queue you want to protect), re-sends each message back to a `sourceQueue` with a delay computed as `min(maximumDelay, backoffRate * 2^attempt)`, and reports a batch item failure once `maxAttempts` is exceeded.
+Registers a replay queue with the app's shared replayer Lambda. The Lambda is triggered by the `replayQueue` (typically the DLQ of the queue you want to protect), re-sends each message back to a `sourceQueue` with a delay computed as `min(maximumDelay, backoffRate * 2^attempt)`, and reports a batch item failure once `maxAttempts` is exceeded. Set `useJitter` to add full jitter, spreading the delays for an attempt uniformly between 0 and that bound.
 
 ```ts
 import { aws_sqs, Duration } from "aws-cdk-lib";
@@ -22,7 +22,8 @@ new SqsReplayer(this, "Replayer", {
   replayQueue,
   maxAttempts: 5,                    // default 5
   backoffRate: Duration.seconds(30), // default 30 seconds
-  maximumDelay: Duration.minutes(15) // default 15 minutes
+  maximumDelay: Duration.minutes(15),// default 15 minutes
+  useJitter: true,                   // default false
 });
 ```
 
@@ -57,7 +58,8 @@ Per-queue configuration is stored in [SSM Parameter Store](https://docs.aws.amaz
   "destinationQueueUrl": "https://sqs.us-east-1.amazonaws.com/123456789012/Queue",
   "maxAttempts": 5,
   "backoffRate": 30,
-  "maximumDelay": 900
+  "maximumDelay": 900,
+  "useJitter": false
 }
 ```
 

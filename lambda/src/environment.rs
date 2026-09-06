@@ -23,6 +23,8 @@ pub struct Environment {
     pub backoff_rate_seconds: u32,
     /// Upper bound for the backoff delay, in seconds.
     pub maximum_delay_seconds: u32,
+    /// Whether to add full jitter to the backoff delay.
+    pub use_jitter: bool,
 }
 
 impl Environment {
@@ -54,6 +56,7 @@ impl Environment {
             max_attempts: positive_int(values, "MAX_ATTEMPTS", 5)?,
             backoff_rate_seconds: positive_int(values, "BACKOFF_RATE", 30)?,
             maximum_delay_seconds: maximum_delay(values)?,
+            use_jitter: bool_flag(values, "BACKOFF_JITTER", false)?,
         })
     }
 }
@@ -89,6 +92,24 @@ fn positive_int(
             }
             Ok(parsed)
         }
+    }
+}
+
+/// Parses a boolean flag, falling back to `default` when unset.
+fn bool_flag(
+    values: &HashMap<String, String>,
+    name: &str,
+    default: bool,
+) -> Result<bool, ConfigError> {
+    match values.get(name) {
+        None => Ok(default),
+        Some(value) => match value.to_ascii_lowercase().as_str() {
+            "true" => Ok(true),
+            "false" => Ok(false),
+            _ => Err(ConfigError::Invalid(format!(
+                "{name} must be either 'true' or 'false'"
+            ))),
+        },
     }
 }
 
@@ -143,6 +164,7 @@ mod tests {
                 max_attempts: 5,
                 backoff_rate_seconds: 30,
                 maximum_delay_seconds: 900,
+                use_jitter: false,
             }
         );
     }
@@ -166,6 +188,27 @@ mod tests {
         assert_eq!(result.backoff_rate_seconds, 60);
         assert_eq!(result.maximum_delay_seconds, 120);
         assert_eq!(result.config_path, "/custom/");
+    }
+
+    #[test]
+    fn jitter_defaults_to_false() {
+        let result = Environment::parse(&HashMap::new()).unwrap();
+        assert!(!result.use_jitter);
+    }
+
+    #[test]
+    fn accepts_jitter_flag() {
+        let mut values = vars();
+        values.insert("BACKOFF_JITTER".to_string(), "true".to_string());
+        let result = Environment::parse(&values).unwrap();
+        assert!(result.use_jitter);
+    }
+
+    #[test]
+    fn rejects_an_invalid_jitter_flag() {
+        let mut values = vars();
+        values.insert("BACKOFF_JITTER".to_string(), "yes".to_string());
+        assert!(Environment::parse(&values).is_err());
     }
 
     #[test]

@@ -38,6 +38,12 @@ export interface SqsQueueWithReplayProps {
    */
   readonly maximumDelay?: Duration;
   /**
+   * Whether to add full jitter to the backoff delay. Applied by the Lambda
+   * when not set.
+   * @default false
+   */
+  readonly useJitter?: boolean;
+  /**
    * Log retention for the replayer Lambda's log group.
    * @default - keep logs indefinitely
    */
@@ -119,6 +125,7 @@ export class SqsQueueWithReplay extends Construct {
       maxAttempts: props.maxAttempts,
       backoffRate: props.backoffRate,
       maximumDelay: props.maximumDelay,
+      useJitter: props.useJitter,
       logRetention: props.logRetention,
       functionName: props.functionName,
       environment: props.environment,

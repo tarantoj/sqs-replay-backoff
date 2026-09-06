@@ -38,6 +38,12 @@ export interface SqsReplayerProps {
    */
   readonly maximumDelay?: Duration;
   /**
+   * Whether to add full jitter to the backoff delay. Applied by the Lambda
+   * when not set.
+   * @default false
+   */
+  readonly useJitter?: boolean;
+  /**
    * Memory allocated to the replayer Lambda. Applies to the shared Lambda the
    * first time it is created.
    * @default 512
@@ -119,7 +125,7 @@ export class SqsReplayer extends Construct {
       configPath: props.configPath,
     });
 
-    const config: { [key: string]: string | number } = {
+    const config: { [key: string]: string | number | boolean } = {
       replayQueueArn: props.replayQueue.queueArn,
       destinationQueueUrl: props.sourceQueue.queueUrl,
     };
@@ -131,6 +137,9 @@ export class SqsReplayer extends Construct {
     }
     if (props.maximumDelay !== undefined) {
       config.maximumDelay = props.maximumDelay.toSeconds();
+    }
+    if (props.useJitter !== undefined) {
+      config.useJitter = props.useJitter;
     }
 
     const parameterName = `${singleton.configPath}${sanitize(this.node.path)}`;
