@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::env;
 
-use url::Url;
-
 /// Default SSM parameter path under which per-queue replay configs are stored.
 pub const DEFAULT_CONFIG_PATH: &str = "/sqs-replay/queues/";
 /// Maximum allowed delay in seconds, matching the SQS message timer limit of
@@ -12,9 +10,6 @@ pub const MAXIMUM_DELAY_LIMIT_SECONDS: u32 = 15 * 60;
 /// Environment configuration for the SQS replayer lambda.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Environment {
-    /// Queue to send messages back to. When set, the lambda runs in single-queue
-    /// mode and ignores the SSM config store.
-    pub queue_url: Option<String>,
     /// SSM parameter path under which per-queue replay configs are stored.
     pub config_path: String,
     /// Maximum replay attempts.
@@ -35,11 +30,6 @@ impl Environment {
 
     /// Parses and validates configuration from a set of environment values.
     pub fn parse(values: &HashMap<String, String>) -> Result<Self, ConfigError> {
-        let queue_url = values
-            .get("QUEUE_URL")
-            .map(|value| validate_url(value))
-            .transpose()?;
-
         let config_path = values
             .get("SSM_PARAMETER_PATH")
             .cloned()
@@ -51,7 +41,6 @@ impl Environment {
         }
 
         Ok(Environment {
-            queue_url,
             config_path,
             max_attempts: positive_int(values, "MAX_ATTEMPTS", 5)?,
             backoff_rate_seconds: positive_int(values, "BACKOFF_RATE", 30)?,
@@ -59,17 +48,6 @@ impl Environment {
             use_jitter: bool_flag(values, "BACKOFF_JITTER", false)?,
         })
     }
-}
-
-fn validate_url(value: &str) -> Result<String, ConfigError> {
-    let parsed = Url::parse(value)
-        .map_err(|_| ConfigError::Invalid("QUEUE_URL must be a valid URL".to_string()))?;
-    if parsed.scheme() != "http" && parsed.scheme() != "https" {
-        return Err(ConfigError::Invalid(
-            "QUEUE_URL must use the http or https scheme".to_string(),
-        ));
-    }
-    Ok(value.to_string())
 }
 
 /// Parses a positive integer environment variable, falling back to `default`
@@ -145,10 +123,7 @@ mod tests {
     use super::*;
 
     fn vars() -> HashMap<String, String> {
-        HashMap::from([(
-            "QUEUE_URL".to_string(),
-            "https://sqs.ap-southeast-2.amazonaws.com/12345/MyQueue".to_string(),
-        )])
+        HashMap::new()
     }
 
     #[test]
@@ -157,9 +132,6 @@ mod tests {
         assert_eq!(
             result,
             Environment {
-                queue_url: Some(
-                    "https://sqs.ap-southeast-2.amazonaws.com/12345/MyQueue".to_string()
-                ),
                 config_path: "/sqs-replay/queues/".to_string(),
                 max_attempts: 5,
                 backoff_rate_seconds: 30,
@@ -167,13 +139,6 @@ mod tests {
                 use_jitter: false,
             }
         );
-    }
-
-    #[test]
-    fn defaults_to_the_config_store_when_queue_url_is_unset() {
-        let result = Environment::parse(&HashMap::new()).unwrap();
-        assert_eq!(result.queue_url, None);
-        assert_eq!(result.config_path, "/sqs-replay/queues/");
     }
 
     #[test]
@@ -208,18 +173,6 @@ mod tests {
     fn rejects_an_invalid_jitter_flag() {
         let mut values = vars();
         values.insert("BACKOFF_JITTER".to_string(), "yes".to_string());
-        assert!(Environment::parse(&values).is_err());
-    }
-
-    #[test]
-    fn errors_when_queue_url_is_not_a_url() {
-        let values = HashMap::from([("QUEUE_URL".to_string(), "abc".to_string())]);
-        assert!(Environment::parse(&values).is_err());
-    }
-
-    #[test]
-    fn errors_when_queue_url_has_non_http_scheme() {
-        let values = HashMap::from([("QUEUE_URL".to_string(), "ftp://example.com".to_string())]);
         assert!(Environment::parse(&values).is_err());
     }
 

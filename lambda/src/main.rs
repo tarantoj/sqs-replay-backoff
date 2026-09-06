@@ -31,7 +31,6 @@ async fn main() -> Result<(), Error> {
 
     let env = Environment::from_env()?;
     info!(
-        queue_url = env.queue_url.as_deref().unwrap_or("(config store)"),
         config_path = %env.config_path,
         max_attempts = env.max_attempts,
         backoff_rate_seconds = env.backoff_rate_seconds,
@@ -103,23 +102,13 @@ async fn handle(
     })
 }
 
-/// Resolves the replay destination for a record: the single `QUEUE_URL` in
-/// legacy mode, or the per-queue config from SSM keyed by the replay queue ARN.
+/// Resolves the replay destination for a record from the SSM config store,
+/// keyed by the replay queue ARN.
 async fn resolve_config(
     env: &Environment,
     config_store: &mut ConfigStore,
     event_source_arn: Option<&str>,
 ) -> Result<Option<ResolvedQueueConfig>, ConfigError> {
-    if let Some(queue_url) = &env.queue_url {
-        return Ok(Some(ResolvedQueueConfig {
-            queue_url: queue_url.clone(),
-            max_attempts: env.max_attempts,
-            backoff_rate_seconds: env.backoff_rate_seconds,
-            maximum_delay_seconds: env.maximum_delay_seconds,
-            use_jitter: env.use_jitter,
-        }));
-    }
-
     let arn = event_source_arn.ok_or(ConfigError::Missing("eventSourceARN"))?;
     match config_store.config_for(arn).await? {
         Some(config) => Ok(Some(config.resolve(env))),

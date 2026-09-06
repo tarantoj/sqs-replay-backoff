@@ -52,11 +52,11 @@ cargo fmt --check
 
 ## Environment variables (Lambda)
 
-- `SSM_PARAMETER_PATH` (default `/sqs-replay/queues/`) — SSM parameter path holding per-queue configs (each value: `{ replayQueueArn, destinationQueueUrl, maxAttempts?, backoffRate?, maximumDelay? }`).
-- `QUEUE_URL` (optional) — legacy single-queue mode; when set, the SSM config store is ignored and all messages replay to this queue.
+- `SSM_PARAMETER_PATH` (default `/sqs-replay/queues/`) — SSM parameter path holding per-queue configs (each value: `{ replayQueueArn, destinationQueueUrl, maxAttempts?, backoffRate?, maximumDelay?, useJitter? }`).
 - `MAX_ATTEMPTS` (default `5`) — replay attempt limit (also the default per-queue fallback).
 - `BACKOFF_RATE` (default `30`) — backoff multiplier in seconds.
 - `MAXIMUM_DELAY` (default `900`, max `900`) — upper bound on the delay in seconds.
+- `BACKOFF_JITTER` (default `false`) — whether to add full jitter to the backoff delay (also the default per-queue fallback).
 - `RUST_LOG` (default `info`) — tracing filter.
 
 ## Releases

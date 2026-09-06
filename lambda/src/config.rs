@@ -176,7 +176,6 @@ mod tests {
 
     fn environment() -> Environment {
         Environment {
-            queue_url: None,
             config_path: "/sqs-replay/queues/".to_string(),
             max_attempts: 5,
             backoff_rate_seconds: 30,
