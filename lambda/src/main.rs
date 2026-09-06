@@ -4,12 +4,13 @@ mod environment;
 mod replay;
 
 use aws_lambda_events::event::sqs::SqsEvent;
+use futures::future::join_all;
 use lambda_runtime::{run, service_fn, Error, LambdaEvent};
 use tracing::{info, warn};
 
 use crate::config::{ConfigError, ConfigStore, ResolvedQueueConfig};
 use crate::environment::Environment;
-use crate::replay::{build_replay_request, send_replay};
+use crate::replay::{build_replay_request, send_replay, ReplayRequest};
 
 /// Response shape consumed by the SQS event source mapping's
 /// `ReportBatchItemFailures` functionality.
@@ -59,16 +60,22 @@ async fn handle(
     config_store: &tokio::sync::Mutex<ConfigStore>,
     event: LambdaEvent<SqsEvent>,
 ) -> Result<BatchResponse, Error> {
+    // Resolve every record's config while holding the lock, then release it so
+    // the (bounded) concurrent sends below do not serialize on config access.
     let mut config_store = config_store.lock().await;
-    let mut failures = Vec::new();
+    let mut resolved = Vec::with_capacity(event.payload.records.len());
     for record in &event.payload.records {
-        let config = match resolve_config(
-            env,
-            &mut config_store,
-            record.event_source_arn.as_deref(),
-        )
-        .await
-        {
+        resolved
+            .push(resolve_config(env, &mut config_store, record.event_source_arn.as_deref()).await);
+    }
+    drop(config_store);
+
+    // Build the replay requests up front; any record without a request is a
+    // failure (no config or retry maximum reached).
+    let mut failures = Vec::new();
+    let mut sends: Vec<ReplayRequest> = Vec::new();
+    for (record, config) in event.payload.records.iter().zip(resolved) {
+        let config = match config {
             Ok(Some(config)) => config,
             Ok(None) => {
                 warn!(
@@ -82,11 +89,7 @@ async fn handle(
         };
 
         match build_replay_request(&config, record) {
-            Ok(Some(request)) => {
-                if let Err(error) = send_replay(sqs, &request).await {
-                    return Err(Error::from(error));
-                }
-            }
+            Ok(Some(request)) => sends.push(request),
             Ok(None) => {
                 info!(
                     message_id = record.message_id.as_deref().unwrap_or("unknown"),
@@ -97,6 +100,17 @@ async fn handle(
             Err(error) => return Err(Error::from(error)),
         }
     }
+
+    // Send replay requests concurrently; on any send error the whole batch
+    // fails and the queue redrives every message again.
+    let results = join_all(sends.into_iter().map(|request| send_replay(sqs, request))).await;
+
+    for result in results {
+        if let Err(error) = result {
+            return Err(Error::from(error));
+        }
+    }
+
     Ok(BatchResponse {
         batch_item_failures: failures,
     })

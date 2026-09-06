@@ -44,6 +44,13 @@ export interface SqsQueueWithReplayProps {
    */
   readonly useJitter?: boolean;
   /**
+   * Maximum number of messages the replayer Lambda processes in a single
+   * invocation. Larger batches reduce per-message overhead at the cost of a
+   * longer-running invocation.
+   * @default 10
+   */
+  readonly batchSize?: number;
+  /**
    * Log retention for the replayer Lambda's log group.
    * @default - keep logs indefinitely
    */
@@ -122,6 +129,7 @@ export class SqsQueueWithReplay extends Construct {
       backoffRate: props.backoffRate,
       maximumDelay: props.maximumDelay,
       useJitter: props.useJitter,
+      batchSize: props.batchSize,
       logRetention: props.logRetention,
       functionName: props.functionName,
       environment: props.environment,

@@ -36,6 +36,13 @@ export interface SqsReplayerProps {
    */
   readonly useJitter?: boolean;
   /**
+   * Maximum number of messages the Lambda processes in a single invocation.
+   * Larger batches reduce per-message overhead (fewer invocations and SSM
+   * refreshes), at the cost of a longer-running invocation.
+   * @default 10
+   */
+  readonly batchSize?: number;
+  /**
    * Memory allocated to the replayer Lambda. Applies to the shared Lambda the
    * first time it is created.
    * @default 512
@@ -117,21 +124,22 @@ export class SqsReplayer extends Construct {
       configPath: props.configPath,
     });
 
+    const { batchSize = 10, sourceQueue, replayQueue, maxAttempts, backoffRate, maximumDelay, useJitter } = props;
     const config: { [key: string]: string | number | boolean } = {
-      replayQueueArn: props.replayQueue.queueArn,
-      destinationQueueUrl: props.sourceQueue.queueUrl,
+      replayQueueArn: replayQueue.queueArn,
+      destinationQueueUrl: sourceQueue.queueUrl,
     };
-    if (props.maxAttempts !== undefined) {
-      config.maxAttempts = props.maxAttempts;
+    if (maxAttempts !== undefined) {
+      config.maxAttempts = maxAttempts;
     }
-    if (props.backoffRate !== undefined) {
-      config.backoffRate = props.backoffRate.toSeconds();
+    if (backoffRate !== undefined) {
+      config.backoffRate = backoffRate.toSeconds();
     }
-    if (props.maximumDelay !== undefined) {
-      config.maximumDelay = props.maximumDelay.toSeconds();
+    if (maximumDelay !== undefined) {
+      config.maximumDelay = maximumDelay.toSeconds();
     }
-    if (props.useJitter !== undefined) {
-      config.useJitter = props.useJitter;
+    if (useJitter !== undefined) {
+      config.useJitter = useJitter;
     }
 
     const parameterName = `${singleton.configPath}${sanitize(this.node.path)}`;
@@ -141,13 +149,13 @@ export class SqsReplayer extends Construct {
     });
 
     singleton.replayer.addEventSource(
-      new aws_lambda_event_sources.SqsEventSource(props.replayQueue, {
-        batchSize: 1,
+      new aws_lambda_event_sources.SqsEventSource(replayQueue, {
+        batchSize,
         reportBatchItemFailures: true,
       }),
     );
 
-    props.sourceQueue.grantSendMessages(singleton.replayer);
+    sourceQueue.grantSendMessages(singleton.replayer);
 
     this.replayer = singleton.replayer;
   }

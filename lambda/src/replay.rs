@@ -66,27 +66,27 @@ fn delay_seconds(config: &ResolvedQueueConfig, attempt: u32) -> u32 {
     }
 }
 
-/// Sends a replay request back to the queue.
+/// Sends a replay request back to the queue, consuming it so its fields can be
+/// moved into the request rather than cloned.
 pub async fn send_replay(
     sqs: &Client,
-    request: &ReplayRequest,
+    request: ReplayRequest,
 ) -> Result<SendMessageOutput, ReplayError> {
     let mut builder = sqs
         .send_message()
-        .queue_url(&request.queue_url)
-        .message_body(&request.message_body)
+        .queue_url(request.queue_url)
+        .message_body(request.message_body)
         .set_delay_seconds(Some(request.delay_seconds as i32))
-        .set_message_attributes(Some(request.message_attributes.clone()));
+        .set_message_attributes(Some(request.message_attributes));
 
     if !request.message_system_attributes.is_empty() {
-        builder =
-            builder.set_message_system_attributes(Some(request.message_system_attributes.clone()));
+        builder = builder.set_message_system_attributes(Some(request.message_system_attributes));
     }
-    if let Some(deduplication_id) = &request.message_deduplication_id {
-        builder = builder.set_message_deduplication_id(Some(deduplication_id.clone()));
+    if let Some(deduplication_id) = request.message_deduplication_id {
+        builder = builder.set_message_deduplication_id(Some(deduplication_id));
     }
-    if let Some(group_id) = &request.message_group_id {
-        builder = builder.set_message_group_id(Some(group_id.clone()));
+    if let Some(group_id) = request.message_group_id {
+        builder = builder.set_message_group_id(Some(group_id));
     }
 
     builder
