@@ -45,7 +45,7 @@ export interface SqsReplayerProps {
   /**
    * Memory allocated to the replayer Lambda. Applies to the shared Lambda the
    * first time it is created.
-   * @default 512
+   * @default 256
    */
   readonly memorySize?: number;
   /**

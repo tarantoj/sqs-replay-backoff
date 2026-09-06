@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 
 use aws_lambda_events::event::sqs::{SqsMessage, SqsMessageAttribute};
-use aws_sdk_sqs::operation::send_message::SendMessageOutput;
 use aws_sdk_sqs::types::{
     MessageAttributeValue, MessageSystemAttributeNameForSends, MessageSystemAttributeValue,
+    SendMessageBatchRequestEntry,
 };
 use aws_sdk_sqs::Client;
 use aws_smithy_types::Blob;
+use futures::future::join_all;
+use tracing::warn;
 
 use crate::backoff::{backoff, backoff_with_jitter};
 use crate::config::ResolvedQueueConfig;
@@ -18,7 +20,8 @@ pub const REPLAY_NUM_PROPERTY_NAME: &str = "sqs-dlq-replay-num";
 /// replay attempt joins the same distributed trace.
 pub const TRACE_HEADER_PROPERTY_NAME: &str = "AWSTraceHeader";
 
-/// A fully-formed SQS `SendMessage` request, ready to be sent.
+/// A fully-formed SQS replay for one message, ready to be sent as a batch
+/// entry.
 #[derive(Debug, Clone)]
 pub struct ReplayRequest {
     pub queue_url: String,
@@ -66,33 +69,126 @@ fn delay_seconds(config: &ResolvedQueueConfig, attempt: u32) -> u32 {
     }
 }
 
-/// Sends a replay request back to the queue, consuming it so its fields can be
-/// moved into the request rather than cloned.
-pub async fn send_replay(
-    sqs: &Client,
-    request: ReplayRequest,
-) -> Result<SendMessageOutput, ReplayError> {
-    let mut builder = sqs
-        .send_message()
-        .queue_url(request.queue_url)
-        .message_body(request.message_body)
+/// A group of replay requests destined for the same queue, sized to fit within
+/// SQS's `SendMessageBatch` limits.
+struct ReplayChunk {
+    queue_url: String,
+    entries: Vec<(String, ReplayRequest)>,
+}
+
+/// Sends replay requests back to their queues using `SendMessageBatch`, one
+/// API call per destination queue (up to 10 entries and 256 KB per call).
+///
+/// Each entry carries the message id it replays; the returned message ids are
+/// the ones SQS failed to accept (or all of them when a whole batch call
+/// errors) and should be reported as batch item failures.
+pub async fn send_replay_batch(sqs: &Client, entries: Vec<(String, ReplayRequest)>) -> Vec<String> {
+    let chunks = chunk_entries(entries);
+    join_all(chunks.into_iter().map(|chunk| send_chunk(sqs, chunk)))
+        .await
+        .into_iter()
+        .flatten()
+        .collect()
+}
+
+/// Groups and chunks replay requests for [`send_replay_batch`]: requests for
+/// the same destination are batched together, and each chunk stays within
+/// SQS's per-request limits (10 entries, 256 KB of payload).
+fn chunk_entries(entries: Vec<(String, ReplayRequest)>) -> Vec<ReplayChunk> {
+    const MAX_ENTRIES: usize = 10;
+    // Keep headroom below the hard 256 KB payload limit for per-entry overhead
+    // (attribute maps, ids) on top of the message bodies.
+    const MAX_BODY_BYTES: usize = 240 * 1024;
+
+    let mut groups: HashMap<String, Vec<(String, ReplayRequest)>> = HashMap::new();
+    for entry in entries {
+        groups
+            .entry(entry.1.queue_url.clone())
+            .or_default()
+            .push(entry);
+    }
+
+    let mut chunks = Vec::new();
+    for (queue_url, mut group) in groups {
+        let mut current = Vec::new();
+        let mut size = 0usize;
+        for entry in group.drain(..) {
+            let entry_size = entry.1.message_body.len();
+            if !current.is_empty()
+                && (current.len() >= MAX_ENTRIES || size + entry_size > MAX_BODY_BYTES)
+            {
+                chunks.push(ReplayChunk {
+                    queue_url: queue_url.clone(),
+                    entries: std::mem::take(&mut current),
+                });
+                size = 0;
+            }
+            size += entry_size;
+            current.push(entry);
+        }
+        if !current.is_empty() {
+            chunks.push(ReplayChunk {
+                queue_url,
+                entries: current,
+            });
+        }
+    }
+    chunks
+}
+
+/// Sends a single chunk, returning the message ids SQS rejected (or all of
+/// them when the whole API call fails).
+async fn send_chunk(sqs: &Client, chunk: ReplayChunk) -> Vec<String> {
+    let mut batch = Vec::with_capacity(chunk.entries.len());
+    for (message_id, request) in &chunk.entries {
+        batch.push(to_batch_entry(message_id, request));
+    }
+
+    match sqs
+        .send_message_batch()
+        .queue_url(&chunk.queue_url)
+        .set_entries(Some(batch))
+        .send()
+        .await
+    {
+        Ok(output) => output
+            .failed()
+            .iter()
+            .map(|failure| failure.id().to_string())
+            .collect(),
+        Err(error) => {
+            warn!(%error, queue_url = %chunk.queue_url, "Failed to send replay batch.");
+            chunk
+                .entries
+                .into_iter()
+                .map(|(message_id, _)| message_id)
+                .collect()
+        }
+    }
+}
+
+/// Converts a replay request into a `SendMessageBatch` entry.
+fn to_batch_entry(id: &str, request: &ReplayRequest) -> SendMessageBatchRequestEntry {
+    let mut builder = SendMessageBatchRequestEntry::builder()
+        .id(id)
+        .message_body(&request.message_body)
         .set_delay_seconds(Some(request.delay_seconds as i32))
-        .set_message_attributes(Some(request.message_attributes));
+        .set_message_attributes(Some(request.message_attributes.clone()));
 
     if !request.message_system_attributes.is_empty() {
-        builder = builder.set_message_system_attributes(Some(request.message_system_attributes));
+        builder =
+            builder.set_message_system_attributes(Some(request.message_system_attributes.clone()));
     }
-    if let Some(deduplication_id) = request.message_deduplication_id {
-        builder = builder.set_message_deduplication_id(Some(deduplication_id));
+    if let Some(deduplication_id) = &request.message_deduplication_id {
+        builder = builder.set_message_deduplication_id(Some(deduplication_id.clone()));
     }
-    if let Some(group_id) = request.message_group_id {
-        builder = builder.set_message_group_id(Some(group_id));
+    if let Some(group_id) = &request.message_group_id {
+        builder = builder.set_message_group_id(Some(group_id.clone()));
     }
 
     builder
-        .send()
-        .await
-        .map_err(|error| ReplayError::Send(Box::new(error)))
+        .build()
+        .expect("batch entry has an id and a message body")
 }
 
 /// Reads the existing replay count for a record, treating a missing attribute
@@ -187,7 +283,6 @@ fn map_message_system_attributes(
 pub enum ReplayError {
     MissingBody,
     InvalidReplayNum,
-    Send(Box<aws_sdk_sqs::error::SdkError<aws_sdk_sqs::operation::send_message::SendMessageError>>),
 }
 
 impl std::fmt::Display for ReplayError {
@@ -197,7 +292,6 @@ impl std::fmt::Display for ReplayError {
             ReplayError::InvalidReplayNum => {
                 write!(f, "sqs-dlq-replay-num attribute is not a number")
             }
-            ReplayError::Send(error) => write!(f, "failed to send replayed message: {error}"),
         }
     }
 }
@@ -377,5 +471,53 @@ mod tests {
     fn omits_system_attributes_when_no_trace_header_is_present() {
         let request = build_replay_request(&config(), &record()).unwrap().unwrap();
         assert!(request.message_system_attributes.is_empty());
+    }
+
+    fn request(body: &str, queue_url: &str) -> ReplayRequest {
+        ReplayRequest {
+            queue_url: queue_url.to_string(),
+            message_body: body.to_string(),
+            delay_seconds: 60,
+            message_attributes: HashMap::new(),
+            message_system_attributes: HashMap::new(),
+            message_deduplication_id: None,
+            message_group_id: None,
+        }
+    }
+
+    #[test]
+    fn groups_entries_by_destination_queue() {
+        let entries = vec![
+            ("1".to_string(), request("a", "url-a")),
+            ("2".to_string(), request("b", "url-b")),
+            ("3".to_string(), request("c", "url-a")),
+        ];
+        let chunks = chunk_entries(entries);
+        assert_eq!(chunks.len(), 2);
+        let a = chunks.iter().find(|c| c.queue_url == "url-a").unwrap();
+        assert_eq!(a.entries.len(), 2);
+        let b = chunks.iter().find(|c| c.queue_url == "url-b").unwrap();
+        assert_eq!(b.entries.len(), 1);
+    }
+
+    #[test]
+    fn chunks_entries_at_the_count_limit() {
+        let entries: Vec<(String, ReplayRequest)> = (0..25)
+            .map(|i| (format!("{i}"), request("x", "url")))
+            .collect();
+        let chunks = chunk_entries(entries);
+        assert_eq!(chunks.len(), 3);
+        assert!(chunks.iter().all(|c| c.entries.len() <= 10));
+    }
+
+    #[test]
+    fn chunks_entries_at_the_payload_limit() {
+        let big = "a".repeat(120 * 1024);
+        let entries: Vec<(String, ReplayRequest)> = (0..3)
+            .map(|i| (format!("{i}"), request(&big, "url")))
+            .collect();
+        let chunks = chunk_entries(entries);
+        assert!(chunks.len() >= 2);
+        assert!(chunks.iter().all(|c| c.entries.len() <= 2));
     }
 }

@@ -82,7 +82,7 @@ describe('SqsReplayer', () => {
       Runtime: 'provided.al2023',
       Architectures: ['arm64'],
       Handler: 'bootstrap',
-      MemorySize: 512,
+      MemorySize: 256,
       Timeout: 10,
       TracingConfig: { Mode: 'Active' },
       Environment: {

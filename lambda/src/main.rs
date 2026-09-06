@@ -3,14 +3,15 @@ mod config;
 mod environment;
 mod replay;
 
+use std::collections::{HashMap, HashSet};
+
 use aws_lambda_events::event::sqs::SqsEvent;
-use futures::future::join_all;
 use lambda_runtime::{run, service_fn, Error, LambdaEvent};
 use tracing::{info, warn};
 
 use crate::config::{ConfigError, ConfigStore, ResolvedQueueConfig};
 use crate::environment::Environment;
-use crate::replay::{build_replay_request, send_replay, ReplayRequest};
+use crate::replay::{build_replay_request, send_replay_batch, ReplayRequest};
 
 /// Response shape consumed by the SQS event source mapping's
 /// `ReportBatchItemFailures` functionality.
@@ -52,44 +53,64 @@ async fn main() -> Result<(), Error> {
 }
 
 /// Replays each SQS record back to its configured queue, reporting a batch
-/// item failure for any message that has exhausted its replay attempts or has
-/// no configuration yet.
+/// item failure for any message that has exhausted its replay attempts, has no
+/// configuration yet, or could not be sent.
 async fn handle(
     env: &Environment,
     sqs: &aws_sdk_sqs::Client,
     config_store: &tokio::sync::Mutex<ConfigStore>,
     event: LambdaEvent<SqsEvent>,
 ) -> Result<BatchResponse, Error> {
-    // Resolve every record's config while holding the lock, then release it so
-    // the (bounded) concurrent sends below do not serialize on config access.
+    // Resolve each unique replay ARN's config exactly once, then release the
+    // lock so the batch sends below do not serialize on config access.
     let mut config_store = config_store.lock().await;
-    let mut resolved = Vec::with_capacity(event.payload.records.len());
+    let mut resolved: HashMap<String, Option<ResolvedQueueConfig>> = HashMap::new();
     for record in &event.payload.records {
-        resolved
-            .push(resolve_config(env, &mut config_store, record.event_source_arn.as_deref()).await);
+        if let Some(arn) = record.event_source_arn.as_deref() {
+            if !resolved.contains_key(arn) {
+                let config = match resolve_config(env, &mut config_store, Some(arn)).await {
+                    Ok(config) => config,
+                    Err(error) => return Err(Error::from(error)),
+                };
+                resolved.insert(arn.to_string(), config);
+            }
+        }
     }
     drop(config_store);
 
     // Build the replay requests up front; any record without a request is a
     // failure (no config or retry maximum reached).
     let mut failures = Vec::new();
-    let mut sends: Vec<ReplayRequest> = Vec::new();
-    for (record, config) in event.payload.records.iter().zip(resolved) {
-        let config = match config {
-            Ok(Some(config)) => config,
-            Ok(None) => {
-                warn!(
-                    message_id = record.message_id.as_deref().unwrap_or("unknown"),
-                    "No replay configuration found for message."
-                );
-                push_failure(&mut failures, &record.message_id);
-                continue;
-            }
-            Err(error) => return Err(Error::from(error)),
+    let mut sends: Vec<(String, ReplayRequest)> = Vec::new();
+    let mut reportable = HashSet::new();
+    for (index, record) in event.payload.records.iter().enumerate() {
+        let config = match record.event_source_arn.as_deref() {
+            None => return Err(Error::from(ConfigError::Missing("eventSourceARN"))),
+            Some(arn) => match resolved.get(arn) {
+                Some(Some(config)) => config,
+                Some(None) => {
+                    warn!(
+                        message_id = record.message_id.as_deref().unwrap_or("unknown"),
+                        "No replay configuration found for message."
+                    );
+                    push_failure(&mut failures, &record.message_id);
+                    continue;
+                }
+                None => unreachable!("every replay ARN was resolved in the first pass"),
+            },
         };
 
-        match build_replay_request(&config, record) {
-            Ok(Some(request)) => sends.push(request),
+        match build_replay_request(config, record) {
+            Ok(Some(request)) => {
+                let message_id = record
+                    .message_id
+                    .clone()
+                    .unwrap_or_else(|| format!("entry-{index}"));
+                if record.message_id.is_some() {
+                    reportable.insert(message_id.clone());
+                }
+                sends.push((message_id, request));
+            }
             Ok(None) => {
                 info!(
                     message_id = record.message_id.as_deref().unwrap_or("unknown"),
@@ -101,13 +122,13 @@ async fn handle(
         }
     }
 
-    // Send replay requests concurrently; on any send error the whole batch
-    // fails and the queue redrives every message again.
-    let results = join_all(sends.into_iter().map(|request| send_replay(sqs, request))).await;
-
-    for result in results {
-        if let Err(error) = result {
-            return Err(Error::from(error));
+    // Send the replay requests; any message SQS rejected is reported as a
+    // batch item failure so only it is redelivered, not the whole batch.
+    for message_id in send_replay_batch(sqs, sends).await {
+        if reportable.contains(&message_id) {
+            failures.push(BatchItemFailure {
+                item_identifier: message_id,
+            });
         }
     }
 

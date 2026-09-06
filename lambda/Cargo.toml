@@ -12,7 +12,6 @@ aws-sdk-ssm = "1"
 aws-smithy-types = "1"
 aws_lambda_events = "1"
 lambda_runtime = "1"
-rand = "0.9"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
@@ -24,3 +23,4 @@ lto = true
 codegen-units = 1
 panic = "abort"
 strip = true
+opt-level = "z"

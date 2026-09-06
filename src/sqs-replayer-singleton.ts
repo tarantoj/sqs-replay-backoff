@@ -11,7 +11,7 @@ const singletons = new WeakMap<Stage, SqsReplayerSingleton>();
 export interface SqsReplayerSingletonProps {
   /**
    * Memory allocated to the replayer Lambda.
-   * @default 512
+   * @default 256
    */
   readonly memorySize?: number;
   /**
@@ -96,7 +96,7 @@ export class SqsReplayerSingleton extends Construct {
     super(scope, id);
 
     const {
-      memorySize = 512,
+      memorySize = 256,
       timeout = Duration.seconds(10),
       logRetention,
       functionName,

@@ -1,7 +1,24 @@
-/// Returns a random number between 0 and `max` inclusive.
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Returns a random number between 0 and `max` inclusive, using a small
+/// dependency-free xorshift64* generator seeded from the clock and a counter.
 fn random_int(max: u32) -> u32 {
-    use rand::Rng;
-    rand::rng().random_range(0..=max)
+    if max == 0 {
+        return 0;
+    }
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.subsec_nanos() as u64)
+        .unwrap_or(0);
+    let mut state = COUNTER.fetch_add(1, Ordering::Relaxed)
+        ^ (nanos << 32)
+        ^ nanos.wrapping_mul(0x9E37_79B9_7F4A_7C15);
+    state ^= state >> 12;
+    state ^= state << 25;
+    state ^= state >> 27;
+    (state.wrapping_mul(0x2545_F491_4F6C_DD1D) % (max as u64 + 1)) as u32
 }
 
 /// `min(max, base * 2^attempt)`
