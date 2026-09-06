@@ -60,7 +60,7 @@ jobs:
         run: cargo install cargo-audit
       - name: Audit Rust dependencies
         id: audit_rust_dependencies
-        run: cargo audit --file lambda/Cargo.lock --ignore RUSTSEC-2026-0258 --ignore RUSTSEC-2026-0104 --ignore RUSTSEC-2026-0098 --ignore RUSTSEC-2026-0099
+        run: cargo audit --file lambda/Cargo.lock
       - name: release
         id: release
         run: npx projen release
