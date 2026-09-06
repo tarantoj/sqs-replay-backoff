@@ -36,6 +36,12 @@ pub struct ReplayRequest {
 
 /// Builds a [`ReplayRequest`] for an SQS record, or `None` when the replay
 /// attempt limit has been exceeded (the message should be reported as failed).
+///
+/// # Errors
+///
+/// Returns [`ReplayError::MissingBody`] when the record has no body and
+/// [`ReplayError::InvalidReplayNum`] when the replay count attribute is not a
+/// number.
 pub fn build_replay_request(
     config: &ResolvedQueueConfig,
     record: &SqsMessage,

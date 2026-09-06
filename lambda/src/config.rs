@@ -44,6 +44,7 @@ pub struct ResolvedQueueConfig {
 impl QueueConfig {
     /// Applies the lambda's global defaults to any tuning value not set in the
     /// stored config.
+    #[must_use]
     pub fn resolve(&self, defaults: &Environment) -> ResolvedQueueConfig {
         ResolvedQueueConfig {
             queue_url: self.destination_queue_url.clone(),
@@ -69,6 +70,7 @@ pub struct ConfigStore {
 }
 
 impl ConfigStore {
+    #[must_use]
     pub const fn new(client: Client, path: String) -> Self {
         Self {
             client,
@@ -80,6 +82,10 @@ impl ConfigStore {
 
     /// Returns the configuration for a replay queue ARN, refreshing the cache
     /// when it is stale.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::Load`] when the SSM parameters cannot be read.
     pub async fn config_for(
         &mut self,
         replay_arn: &str,

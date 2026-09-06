@@ -25,3 +25,7 @@ codegen-units = 1
 panic = "abort"
 strip = true
 opt-level = "z"
+
+[dev-dependencies]
+aws-credential-types = "1"
+wiremock = "0.6"

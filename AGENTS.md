@@ -7,7 +7,7 @@ Guidance for AI agents and contributors working in this repository.
 `@tarantoj/sqs-replay-backoff` is a jsii AWS CDK construct library that replays SQS messages back to a source queue with exponential backoff. It contains:
 
 - `src/` — TypeScript CDK constructs (`SqsReplayer`, `SqsQueueWithReplay`, and the internal `SqsReplayerSingleton`).
-- `lambda/` — the Rust replayer Lambda, cross-compiled and shipped prebuilt inside the npm package.
+- `lambda/` — the Rust replayer Lambda, cross-compiled and shipped prebuilt inside the npm package. It is split into a library crate (`lambda/src/lib.rs`, which exposes the runtime flow as `handle`) and a thin binary (`lambda/src/main.rs`); integration tests live under `lambda/tests/`.
 - `assets/lambda/bootstrap` — build artifact (not committed): the ARM64 Lambda binary consumed by the constructs.
 
 The replayer Lambda is a **singleton per CDK app**: every `SqsReplayer`/`SqsQueueWithReplay` in the app adds its own SQS event source mapping to the same function. Each instance registers its per-queue config (replay queue ARN, destination queue URL, backoff tuning) in SSM Parameter Store under `/sqs-replay/queues/`; the Lambda resolves the destination per event from the record's `eventSourceARN` (keyed by the `replayQueueArn` stored in each parameter value), re-sends each message to the destination with delay `min(maximumDelay, backoffRate * 2^attempt)`, tracks attempts via the `sqs-dlq-replay-num` message attribute, and reports a batch item failure once `maxAttempts` is exceeded (or when no config exists yet). Configs are cached for ~60s.
@@ -49,6 +49,7 @@ Static analysis for the Rust lambda is enforced in CI via `scripts/check-lambda.
 - Tests use [vitest](https://vitest.dev/) (`vitest.config.mts`); projen's jest integration is disabled (`jest: false`).
 - Formatting is enforced by [Prettier](https://prettier.io/) via `plugin:prettier/recommended` in the eslint config (which disables the conflicting `@stylistic` rules); run `npx prettier --write` (or `npm run prettier:write`) after editing sources, and `prettier:check` runs as part of `npm test`.
 - Rust code: keep the logical modules (`environment`, `config`, `backoff`, `replay`); pure logic is unit-tested in-crate; keep `main.rs` thin.
+- The replayer crate's runtime flow is covered by mocked-AWS integration tests under `lambda/tests/` (run by `cargo test`): `support/mod.rs` builds SQS/SSM SDK clients pointed at a `wiremock` backend, and `replay_flow.rs` drives `handle()` end to end (SSM config resolution, backoff delay, `SendMessageBatch` chunking, batch item failures). No AWS credentials or account are needed.
 - Keep behavior aligned with the reference implementations:
   - Lambda semantics: replay with exponential backoff, `sqs-dlq-replay-num` attempt tracking, and batch item failures.
   - Construct semantics: the queue-with-replay and queue-replayer pattern (redrive chain + replayer).

@@ -15,6 +15,7 @@ fn random_int(max: u32) -> u32 {
 /// 3. `30 * 2^3 = 240`
 /// 4. `30 * 2^4 = 480`
 /// 5. `30 * 2^5 = 960 -> 900`
+#[must_use]
 pub fn backoff(base: u32, max: u32, attempt: u32) -> u32 {
     max.min(base.saturating_mul(2u32.saturating_pow(attempt)))
 }
@@ -24,6 +25,7 @@ pub fn backoff(base: u32, max: u32, attempt: u32) -> u32 {
 ///
 /// See "Full Jitter" in
 /// [Exponential Backoff and Jitter](https://aws.amazon.com/blogs/architecture/exponential-backoff-and-jitter/).
+#[must_use]
 pub fn backoff_with_jitter(base: u32, max: u32, attempt: u32) -> u32 {
     random_int(backoff(base, max, attempt))
 }

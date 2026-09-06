@@ -24,11 +24,20 @@ pub struct Environment {
 
 impl Environment {
     /// Reads and validates the configuration from the lambda's environment.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::Invalid`] when an environment value is missing or
+    /// malformed.
     pub fn from_env() -> Result<Self, ConfigError> {
         Self::parse(&env::vars().collect())
     }
 
     /// Parses and validates configuration from a set of environment values.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ConfigError::Invalid`] when a value is missing or malformed.
     pub fn parse(values: &HashMap<String, String>) -> Result<Self, ConfigError> {
         let config_path = values
             .get("SSM_PARAMETER_PATH")
