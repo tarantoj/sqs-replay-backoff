@@ -67,6 +67,16 @@ The Lambda loads the full path on cold start and caches it for ~60 seconds, so n
 
 ### How it works
 
+```mermaid
+flowchart LR
+    App[Application] -- "fails repeatedly" --> Q[(Queue)]
+    Q -- "redrive after maxReceiveCount" --> RQ[(ReplayQueue)]
+    RQ -- "redrive after maxReceiveCount" --> DLQ[(DeadLetterQueue)]
+    RQ -- "event source - batchSize 1" --> Fn[Shared Replayer Lambda]
+    Fn <-->|"read config by replayQueueArn"| SSM[(SSM Parameter Store)]
+    Fn -- "re-send with delay<br/>min(maximumDelay, backoffRate x 2^attempt)" --> Q
+```
+
 1. Messages failing to be consumed are moved to the `ReplayQueue` by the source queue's redrive policy.
 2. The shared reaper Lambda (triggered by each `ReplayQueue` with `batchSize: 1` and `reportBatchItemFailures`) looks up the destination for the event's `eventSourceARN`, then re-sends each message to that source queue with an exponential delay tracked by the `sqs-dlq-replay-num` message attribute.
 3. Once a message has been replayed `maxAttempts` times it is reported as a failed batch item, so it is redriven from `ReplayQueue` into the final `DeadLetterQueue`.
