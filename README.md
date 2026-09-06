@@ -83,6 +83,10 @@ flowchart LR
 
 Function-level Lambda options (memory, timeout, VPC, `functionName`, `logRetention`, `code`, `environment`) apply to the shared function the first time it is created in an app; later instances' values are ignored.
 
+## Tracing
+
+X-Ray tracing is enabled on the replayer Lambda by default. Each replayed message carries the original producer's `AWSTraceHeader` (an SQS system attribute) through the replay queue and onto the re-sent `SendMessage`, so every replay attempt appears as part of the same distributed trace. No configuration is required.
+
 ## Development
 
 The development environment is managed by [devenv](https://devenv.sh/).

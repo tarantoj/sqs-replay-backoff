@@ -84,6 +84,7 @@ describe('SqsReplayer', () => {
       Handler: 'bootstrap',
       MemorySize: 512,
       Timeout: 10,
+      TracingConfig: { Mode: 'Active' },
       Environment: {
         Variables: {
           REPLAY_CONFIG_STORE: 'ssm',

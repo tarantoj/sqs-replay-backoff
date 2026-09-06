@@ -116,6 +116,7 @@ export class SqsReplayerSingleton extends Construct {
       code: code ?? aws_lambda.Code.fromAsset(join(__dirname, '..', 'assets', 'lambda')),
       memorySize,
       timeout,
+      tracing: aws_lambda.Tracing.ACTIVE,
       environment: {
         REPLAY_CONFIG_STORE: 'ssm',
         SSM_PARAMETER_PATH: configPath,

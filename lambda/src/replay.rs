@@ -2,7 +2,9 @@ use std::collections::HashMap;
 
 use aws_lambda_events::event::sqs::{SqsMessage, SqsMessageAttribute};
 use aws_sdk_sqs::operation::send_message::SendMessageOutput;
-use aws_sdk_sqs::types::MessageAttributeValue;
+use aws_sdk_sqs::types::{
+    MessageAttributeValue, MessageSystemAttributeNameForSends, MessageSystemAttributeValue,
+};
 use aws_sdk_sqs::Client;
 use aws_smithy_types::Blob;
 
@@ -12,6 +14,10 @@ use crate::config::ResolvedQueueConfig;
 /// Message attribute tracking how many times a message has been replayed.
 pub const REPLAY_NUM_PROPERTY_NAME: &str = "sqs-dlq-replay-num";
 
+/// SQS system attribute carrying the X-Ray trace header, propagated so every
+/// replay attempt joins the same distributed trace.
+pub const TRACE_HEADER_PROPERTY_NAME: &str = "AWSTraceHeader";
+
 /// A fully-formed SQS `SendMessage` request, ready to be sent.
 #[derive(Debug, Clone)]
 pub struct ReplayRequest {
@@ -19,6 +25,8 @@ pub struct ReplayRequest {
     pub message_body: String,
     pub delay_seconds: u32,
     pub message_attributes: HashMap<String, MessageAttributeValue>,
+    pub message_system_attributes:
+        HashMap<MessageSystemAttributeNameForSends, MessageSystemAttributeValue>,
     pub message_deduplication_id: Option<String>,
     pub message_group_id: Option<String>,
 }
@@ -41,6 +49,7 @@ pub fn build_replay_request(
         message_body: record.body.clone().ok_or(ReplayError::MissingBody)?,
         delay_seconds: delay_seconds(config, replay_num),
         message_attributes: map_message_attributes(&record.message_attributes, replay_num),
+        message_system_attributes: map_message_system_attributes(&record.attributes),
         message_deduplication_id: record.attributes.get("MessageDeduplicationId").cloned(),
         message_group_id: record.attributes.get("MessageGroupId").cloned(),
     }))
@@ -69,6 +78,10 @@ pub async fn send_replay(
         .set_delay_seconds(Some(request.delay_seconds as i32))
         .set_message_attributes(Some(request.message_attributes.clone()));
 
+    if !request.message_system_attributes.is_empty() {
+        builder =
+            builder.set_message_system_attributes(Some(request.message_system_attributes.clone()));
+    }
     if let Some(deduplication_id) = &request.message_deduplication_id {
         builder = builder.set_message_deduplication_id(Some(deduplication_id.clone()));
     }
@@ -145,6 +158,28 @@ fn map_message_attributes(
     );
 
     attributes
+}
+
+/// Maps the incoming SQS system attributes to `SendMessage` system attributes,
+/// forwarding the X-Ray trace header so replay attempts stay in the same trace.
+/// `SendMessage` only supports `AWSTraceHeader` as a system attribute, so the
+/// remaining delivery metadata (e.g. `ApproximateReceiveCount`) is not carried.
+fn map_message_system_attributes(
+    input: &HashMap<String, String>,
+) -> HashMap<MessageSystemAttributeNameForSends, MessageSystemAttributeValue> {
+    input
+        .get(TRACE_HEADER_PROPERTY_NAME)
+        .map(|trace_header| {
+            HashMap::from([(
+                MessageSystemAttributeNameForSends::AwsTraceHeader,
+                MessageSystemAttributeValue::builder()
+                    .set_string_value(Some(trace_header.clone()))
+                    .data_type("String")
+                    .build()
+                    .expect("trace header system attribute is fully populated"),
+            )])
+        })
+        .unwrap_or_default()
 }
 
 /// Replay processing error.
@@ -318,5 +353,29 @@ mod tests {
         let request = build_replay_request(&config(), &record()).unwrap().unwrap();
         assert_eq!(request.message_deduplication_id, None);
         assert_eq!(request.message_group_id, None);
+    }
+
+    #[test]
+    fn forwards_the_xray_trace_header_system_attribute() {
+        let mut record = record();
+        record.attributes.insert(
+            TRACE_HEADER_PROPERTY_NAME.to_string(),
+            "Root=1-5759e988-bd862e3fe1be46a994272793;Parent=53995c3f42cd8ad8;Sampled=1"
+                .to_string(),
+        );
+        let request = build_replay_request(&config(), &record).unwrap().unwrap();
+        let trace =
+            &request.message_system_attributes[&MessageSystemAttributeNameForSends::AwsTraceHeader];
+        assert_eq!(
+            trace.string_value.as_deref(),
+            Some("Root=1-5759e988-bd862e3fe1be46a994272793;Parent=53995c3f42cd8ad8;Sampled=1")
+        );
+        assert_eq!(trace.data_type(), "String");
+    }
+
+    #[test]
+    fn omits_system_attributes_when_no_trace_header_is_present() {
+        let request = build_replay_request(&config(), &record()).unwrap().unwrap();
+        assert!(request.message_system_attributes.is_empty());
     }
 }
