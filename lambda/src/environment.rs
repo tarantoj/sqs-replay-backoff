@@ -40,7 +40,7 @@ impl Environment {
             ));
         }
 
-        Ok(Environment {
+        Ok(Self {
             config_path,
             max_attempts: positive_int(values, "MAX_ATTEMPTS", 5)?,
             backoff_rate_seconds: positive_int(values, "BACKOFF_RATE", 30)?,
@@ -79,16 +79,15 @@ fn bool_flag(
     name: &str,
     default: bool,
 ) -> Result<bool, ConfigError> {
-    match values.get(name) {
-        None => Ok(default),
-        Some(value) => match value.to_ascii_lowercase().as_str() {
+    values.get(name).map_or(Ok(default), |value| {
+        match value.to_ascii_lowercase().as_str() {
             "true" => Ok(true),
             "false" => Ok(false),
             _ => Err(ConfigError::Invalid(format!(
                 "{name} must be either 'true' or 'false'"
             ))),
-        },
-    }
+        }
+    })
 }
 
 /// Parses `MAXIMUM_DELAY`, enforcing the SQS message timer limit.
@@ -111,7 +110,7 @@ pub enum ConfigError {
 impl std::fmt::Display for ConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConfigError::Invalid(message) => write!(f, "invalid configuration: {message}"),
+            Self::Invalid(message) => write!(f, "invalid configuration: {message}"),
         }
     }
 }

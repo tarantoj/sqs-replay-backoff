@@ -33,6 +33,10 @@ jobs:
       - uses: goto-bus-stop/setup-zig@v2
       - name: Install cargo-zigbuild
         run: cargo install cargo-zigbuild
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+      - name: Audit Rust dependencies
+        run: cargo audit --manifest-path lambda/Cargo.toml
       - name: build
         run: npx projen build
       - name: Find mutations

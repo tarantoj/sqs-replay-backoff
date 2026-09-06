@@ -109,10 +109,10 @@ fn chunk_entries(entries: Vec<(String, ReplayRequest)>) -> Vec<ReplayChunk> {
     }
 
     let mut chunks = Vec::new();
-    for (queue_url, mut group) in groups {
+    for (queue_url, group) in groups {
         let mut current = Vec::new();
         let mut size = 0usize;
-        for entry in group.drain(..) {
+        for entry in group {
             let entry_size = entry.1.message_body.len();
             if !current.is_empty()
                 && (current.len() >= MAX_ENTRIES || size + entry_size > MAX_BODY_BYTES)
@@ -168,6 +168,10 @@ async fn send_chunk(sqs: &Client, chunk: ReplayChunk) -> Vec<String> {
 }
 
 /// Converts a replay request into a `SendMessageBatch` entry.
+#[allow(
+    clippy::cast_possible_wrap,
+    reason = "the delay is capped at 900s (SQS message timer limit), so it always fits in an i32"
+)]
 fn to_batch_entry(id: &str, request: &ReplayRequest) -> SendMessageBatchRequestEntry {
     let mut builder = SendMessageBatchRequestEntry::builder()
         .id(id)
@@ -288,8 +292,8 @@ pub enum ReplayError {
 impl std::fmt::Display for ReplayError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ReplayError::MissingBody => write!(f, "message has no body"),
-            ReplayError::InvalidReplayNum => {
+            Self::MissingBody => write!(f, "message has no body"),
+            Self::InvalidReplayNum => {
                 write!(f, "sqs-dlq-replay-num attribute is not a number")
             }
         }

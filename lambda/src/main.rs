@@ -93,7 +93,7 @@ async fn handle(
                         message_id = record.message_id.as_deref().unwrap_or("unknown"),
                         "No replay configuration found for message."
                     );
-                    push_failure(&mut failures, &record.message_id);
+                    push_failure(&mut failures, record.message_id.as_ref());
                     continue;
                 }
                 None => unreachable!("every replay ARN was resolved in the first pass"),
@@ -116,7 +116,7 @@ async fn handle(
                     message_id = record.message_id.as_deref().unwrap_or("unknown"),
                     "Retry maximum reached."
                 );
-                push_failure(&mut failures, &record.message_id);
+                push_failure(&mut failures, record.message_id.as_ref());
             }
             Err(error) => return Err(Error::from(error)),
         }
@@ -145,13 +145,13 @@ async fn resolve_config(
     event_source_arn: Option<&str>,
 ) -> Result<Option<ResolvedQueueConfig>, ConfigError> {
     let arn = event_source_arn.ok_or(ConfigError::Missing("eventSourceARN"))?;
-    match config_store.config_for(arn).await? {
-        Some(config) => Ok(Some(config.resolve(env))),
-        None => Ok(None),
-    }
+    config_store
+        .config_for(arn)
+        .await?
+        .map_or_else(|| Ok(None), |config| Ok(Some(config.resolve(env))))
 }
 
-fn push_failure(failures: &mut Vec<BatchItemFailure>, message_id: &Option<String>) {
+fn push_failure(failures: &mut Vec<BatchItemFailure>, message_id: Option<&String>) {
     if let Some(message_id) = message_id {
         failures.push(BatchItemFailure {
             item_identifier: message_id.clone(),

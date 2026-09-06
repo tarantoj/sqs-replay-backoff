@@ -7,6 +7,11 @@ const rustSetupSteps: github.workflows.JobStep[] = [
   },
   { uses: 'goto-bus-stop/setup-zig@v2' },
   { name: 'Install cargo-zigbuild', run: 'cargo install cargo-zigbuild' },
+  { name: 'Install cargo-audit', run: 'cargo install cargo-audit' },
+  {
+    name: 'Audit Rust dependencies',
+    run: 'cargo audit --manifest-path lambda/Cargo.toml',
+  },
 ];
 
 const project = new awscdk.AwsCdkConstructLibrary({
@@ -68,7 +73,7 @@ const project = new awscdk.AwsCdkConstructLibrary({
 });
 
 const bundleLambda = project.addTask('bundle:lambda', {
-  steps: [{ exec: 'bash scripts/bundle-lambda.sh' }],
+  steps: [{ exec: 'bash scripts/check-lambda.sh' }, { exec: 'bash scripts/bundle-lambda.sh' }],
 });
 const testTask = project.tasks.tryFind('test');
 testTask?.prependExec('vitest run');

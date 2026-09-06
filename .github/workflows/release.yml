@@ -55,6 +55,12 @@ jobs:
       - name: Install cargo-zigbuild
         id: install_cargo-zigbuild
         run: cargo install cargo-zigbuild
+      - name: Install cargo-audit
+        id: install_cargo-audit
+        run: cargo install cargo-audit
+      - name: Audit Rust dependencies
+        id: audit_rust_dependencies
+        run: cargo audit --manifest-path lambda/Cargo.toml
       - name: release
         id: release
         run: npx projen release

@@ -29,9 +29,11 @@ devenv test            # devenv smoke test
 cd lambda
 cargo build            # build the lambda (host target)
 cargo test             # run Rust unit tests
-cargo clippy -- -D warnings
+cargo clippy --all-targets -- -D warnings -D clippy::pedantic -D clippy::nursery
 cargo fmt --check
 ```
+
+Static analysis for the Rust lambda is enforced in CI via `scripts/check-lambda.sh` (fmt, clippy with `pedantic` + `nursery` as errors, and unit tests), which the `bundle:lambda` projen task runs as a prerequisite of `test`/`build`. Keep the crate clean under that lint set. Use a scoped `#[allow(...)]` with a `reason` only where a pedantic lint flags an intentional, bounded cast (e.g. `delay_seconds` → `i32`).
 
 ## Bundling the Rust lambda
 

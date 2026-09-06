@@ -5,7 +5,7 @@
   env.GREET = "sqs-replay-backoff";
 
   # https://devenv.sh/packages/
-  packages = [ pkgs.git pkgs.zig pkgs.cargo-zigbuild pkgs.cargo-lambda ];
+  packages = [ pkgs.git pkgs.zig pkgs.cargo-zigbuild pkgs.cargo-lambda pkgs.cargo-audit ];
 
   # https://devenv.sh/languages/
   languages.javascript.enable = true;

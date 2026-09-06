@@ -72,6 +72,9 @@
       "name": "bundle:lambda",
       "steps": [
         {
+          "exec": "bash scripts/check-lambda.sh"
+        },
+        {
           "exec": "bash scripts/bundle-lambda.sh"
         }
       ]

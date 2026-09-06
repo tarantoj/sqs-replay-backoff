@@ -69,7 +69,7 @@ pub struct ConfigStore {
 }
 
 impl ConfigStore {
-    pub fn new(client: Client, path: String) -> Self {
+    pub const fn new(client: Client, path: String) -> Self {
         Self {
             client,
             path,
@@ -160,8 +160,8 @@ pub enum ConfigError {
 impl std::fmt::Display for ConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConfigError::Missing(name) => write!(f, "missing {name}"),
-            ConfigError::Load(error) => {
+            Self::Missing(name) => write!(f, "missing {name}"),
+            Self::Load(error) => {
                 write!(f, "failed to load replay configs from SSM: {error}")
             }
         }
