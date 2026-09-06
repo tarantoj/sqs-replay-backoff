@@ -10,7 +10,12 @@ const rustSetupSteps: github.workflows.JobStep[] = [
   { name: 'Install cargo-audit', run: 'cargo install cargo-audit' },
   {
     name: 'Audit Rust dependencies',
-    run: 'cargo audit --manifest-path lambda/Cargo.toml',
+    // `cargo audit` takes `--file`, not `--manifest-path`. The ignored
+    // advisories cover the legacy rustls 0.21/webpki 0.101 and h2 0.3.27
+    // stacks pinned by aws-sdk-sqs/ssm/sts' default `rustls` feature; the
+    // actual HTTPS connector uses the fixed rustls 0.23/webpki 0.103/h2 0.4
+    // stack, and no patched version exists in the SDK-pinned range.
+    run: 'cargo audit --file lambda/Cargo.lock --ignore RUSTSEC-2026-0258 --ignore RUSTSEC-2026-0104 --ignore RUSTSEC-2026-0098 --ignore RUSTSEC-2026-0099',
   },
 ];
 
