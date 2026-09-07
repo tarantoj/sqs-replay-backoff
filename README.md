@@ -4,6 +4,8 @@ An [AWS CDK](https://docs.aws.amazon.com/cdk/v2/guide/home.html) construct libra
 
 The replayer is a single shared [Rust](https://www.rust-lang.org/) Lambda (custom runtime) per CDK app. It is cross-compiled and shipped prebuilt inside this package, so consumers do not need a Rust toolchain or Docker.
 
+This library is based on the [amazon-sqs-dlq-replay-backoff](https://github.com/aws-samples/amazon-sqs-dlq-replay-backoff) AWS sample, reworked into a jsii CDK construct library.
+
 ## Constructs
 
 ### `SqsReplayer`
