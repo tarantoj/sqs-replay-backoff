@@ -59,6 +59,7 @@ const project = new awscdk.AwsCdkConstructLibrary({
   npmIgnoreOptions: {
     ignorePatterns: [
       '/lambda/',
+      '/AGENTS.md',
       '.devenv*',
       'devenv.local.nix',
       'devenv.local.yaml',
