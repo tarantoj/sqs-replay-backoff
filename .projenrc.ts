@@ -28,6 +28,7 @@ const project = new awscdk.AwsCdkConstructLibrary({
   typescriptVersion: '~5.9.3',
   defaultReleaseBranch: 'main',
   name: '@tarantoj/sqs-replay-backoff',
+  description: 'AWS CDK construct that replays SQS messages back to a source queue with exponential backoff.',
   projenrcTs: true,
   releaseToNpm: true,
   prerelease: 'beta',

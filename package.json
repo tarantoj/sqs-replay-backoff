@@ -1,5 +1,6 @@
 {
   "name": "@tarantoj/sqs-replay-backoff",
+  "description": "AWS CDK construct that replays SQS messages back to a source queue with exponential backoff.",
   "repository": {
     "type": "git",
     "url": "https://github.com/tarantoj/sqs-replay-backoff.git"
