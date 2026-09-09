@@ -54,6 +54,23 @@ const project = new awscdk.AwsCdkConstructLibrary({
     },
   },
   gitignore: ['.devenv*', 'devenv.local.nix', 'devenv.local.yaml', '.direnv', '.pre-commit-config.yaml', '/lambda/target/', '/assets/'],
+  // Dependabot owns npm + cargo updates (patch/minor only, auto-merged by mergify).
+  // The nightly `upgrade-main` workflow is disabled (`depsUpgrade: false`) since
+  // projen forbids it alongside dependabot; bump projen itself manually via
+  // `npx projen upgrade`. Dependabot ignores `projen` by default.
+  depsUpgrade: false,
+  dependabot: false,
+  githubOptions: {
+    mergifyOptions: {
+      rules: [
+        {
+          name: 'Auto-merge dependabot patch/minor on green build',
+          conditions: ['author=dependabot[bot]', '-label~=(do-not-merge)', 'status-success=build', 'status-success=package-js'],
+          actions: { queue: { name: 'default' } },
+        },
+      ],
+    },
+  },
   // Rust toolchain for cross-compiling the bundled lambda in CI
   buildWorkflowOptions: { preBuildSteps: rustSetupSteps },
   releaseWorkflowSetupSteps: rustSetupSteps,
@@ -98,5 +115,22 @@ project.addTask('prettier:write', {
   steps: [{ exec: `prettier --write ${prettierFiles.join(' ')}` }],
 });
 testTask?.prependSpawn(project.tasks.tryFind('prettier:check')!);
+
+// npm updates via projen's Dependabot component (weekly, lockfile-only), then
+// patched raw: ignore semver-major so only patch/minor PRs are raised, and add
+// the cargo ecosystem for the Rust lambda in /lambda. Raw mutation is needed
+// because DependabotIgnore in this projen version has no `update-types` field
+// and the component only synthesizes the npm entry.
+const dependabot = project.github!.addDependabot({ scheduleInterval: github.DependabotScheduleInterval.WEEKLY });
+const majorIgnore = { 'dependency-name': '*', 'update-types': ['version-update:semver-major'] };
+for (const update of dependabot.config.updates) {
+  update.ignore = [majorIgnore];
+}
+dependabot.config.updates.push({
+  'package-ecosystem': 'cargo',
+  directory: '/lambda',
+  schedule: { interval: 'weekly' },
+  ignore: [majorIgnore],
+});
 
 project.synth();

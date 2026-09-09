@@ -13,6 +13,15 @@ queue_rules:
       title: pr-title
       body: pr-body
 pull_request_rules:
+  - name: Auto-merge dependabot patch/minor on green build
+    conditions:
+      - author=dependabot[bot]
+      - -label~=(do-not-merge)
+      - status-success=build
+      - status-success=package-js
+    actions:
+      queue:
+        name: default
   - name: Automatic merge on approval and successful build
     actions:
       queue:
