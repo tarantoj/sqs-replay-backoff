@@ -11,10 +11,24 @@ updates:
       - dependency-name: "*"
         update-types:
           - version-update:semver-major
+    cooldown:
+      default-days: 7
   - package-ecosystem: cargo
     directory: /lambda
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
     ignore:
       - dependency-name: "*"
         update-types:

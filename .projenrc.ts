@@ -54,10 +54,11 @@ const project = new awscdk.AwsCdkConstructLibrary({
     },
   },
   gitignore: ['.devenv*', 'devenv.local.nix', 'devenv.local.yaml', '.direnv', '.pre-commit-config.yaml', '/lambda/target/', '/assets/'],
-  // Dependabot owns npm + cargo updates (patch/minor only, auto-merged by mergify).
+  // Dependabot owns npm + cargo + github-actions updates (patch/minor only,
+  // 7-day cooldown, auto-merged by mergify).
   // The nightly `upgrade-main` workflow is disabled (`depsUpgrade: false`) since
   // projen forbids it alongside dependabot; bump projen itself manually via
-  // `npx projen upgrade`. Dependabot ignores `projen` by default.
+  // `npm i -D projen@latest && npx projen`. Dependabot ignores `projen` by default.
   depsUpgrade: false,
   dependabot: false,
   githubOptions: {
@@ -116,21 +117,37 @@ project.addTask('prettier:write', {
 });
 testTask?.prependSpawn(project.tasks.tryFind('prettier:check')!);
 
-// npm updates via projen's Dependabot component (weekly, lockfile-only), then
-// patched raw: ignore semver-major so only patch/minor PRs are raised, and add
-// the cargo ecosystem for the Rust lambda in /lambda. Raw mutation is needed
-// because DependabotIgnore in this projen version has no `update-types` field
-// and the component only synthesizes the npm entry.
-const dependabot = project.github!.addDependabot({ scheduleInterval: github.DependabotScheduleInterval.WEEKLY });
+// npm updates via projen's Dependabot component (weekly, lockfile-only, 7-day
+// cooldown), then patched raw: ignore semver-major so only patch/minor PRs are
+// raised, and add the cargo ecosystem for the Rust lambda in /lambda plus the
+// github-actions ecosystem for workflow pins. Raw mutation is needed because
+// DependabotIgnore in this projen version has no `update-types` field, the
+// component only synthesizes the npm entry, and the cargo/actions entries need
+// the same cooldown in kebab-case.
+const dependabot = project.github!.addDependabot({
+  scheduleInterval: github.DependabotScheduleInterval.WEEKLY,
+  cooldown: { defaultDays: 7 },
+});
 const majorIgnore = { 'dependency-name': '*', 'update-types': ['version-update:semver-major'] };
+const cooldown = { 'default-days': 7 };
 for (const update of dependabot.config.updates) {
   update.ignore = [majorIgnore];
 }
-dependabot.config.updates.push({
-  'package-ecosystem': 'cargo',
-  directory: '/lambda',
-  schedule: { interval: 'weekly' },
-  ignore: [majorIgnore],
-});
+dependabot.config.updates.push(
+  {
+    'package-ecosystem': 'cargo',
+    directory: '/lambda',
+    schedule: { interval: 'weekly' },
+    cooldown,
+    ignore: [majorIgnore],
+  },
+  {
+    'package-ecosystem': 'github-actions',
+    directory: '/',
+    schedule: { interval: 'weekly' },
+    cooldown,
+    ignore: [majorIgnore],
+  },
+);
 
 project.synth();
