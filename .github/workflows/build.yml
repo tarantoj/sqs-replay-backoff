@@ -21,7 +21,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           repository: ${{ github.event.pull_request.head.repo.full_name }}
       - name: Setup Node.js
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: 24.x
           package-manager-cache: false
@@ -112,7 +112,7 @@ jobs:
       contents: read
     if: ${{ !needs.build.outputs.self_mutation_happened }}
     steps:
-      - uses: actions/setup-node@v7.0.0
+      - uses: actions/setup-node@v7.1.0
         with:
           node-version: 24.x
           package-manager-cache: false
